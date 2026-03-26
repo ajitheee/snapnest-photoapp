@@ -1,0 +1,114 @@
+import { Processor, WorkerHost } from '@nestjs/bullmq';
+import { Logger } from '@nestjs/common';
+import { Job } from 'bullmq';
+import axios from 'axios';
+import { PrismaService } from '../prisma/prisma.service';
+
+const ML_URL = process.env.ML_SERVICE_URL || 'http://ml:3003';
+
+@Processor('ml')
+export class MlJobsProcessor extends WorkerHost {
+  private readonly logger = new Logger(MlJobsProcessor.name);
+
+  constructor(private readonly prisma: PrismaService) {
+    super();
+  }
+
+  async process(job: Job) {
+    switch (job.name) {
+      case 'clip-embed':   return this.clipEmbed(job.data);
+      case 'face-detect':  return this.faceDetect(job.data);
+      case 'scene-tag':    return this.sceneTag(job.data);
+      case 'geocode':      return this.geocode(job.data);
+      default:
+        this.logger.warn(`Unknown ML job: ${job.name}`);
+    }
+  }
+
+  private async clipEmbed(data: { assetId: string; imagePath: string }) {
+    const { assetId, imagePath } = data;
+    this.logger.log(`CLIP embed for ${assetId}`);
+
+    const res = await axios.post(`${ML_URL}/embed/image`, { image_path: imagePath }, { timeout: 60000 });
+    const embedding: number[] = res.data.embedding;
+
+    if (embedding?.length === 512) {
+      const vec = `[${embedding.join(',')}]`;
+      await this.prisma.$executeRaw`
+        UPDATE assets SET "clipEmbedding" = ${vec}::vector WHERE id = ${assetId}
+      `;
+    }
+
+    await this.prisma.assetJobStatus.update({
+      where: { assetId },
+      data: { clipEmbeddedAt: new Date() },
+    });
+
+    this.logger.log(`CLIP embed done for ${assetId} (dim=${embedding?.length})`);
+  }
+
+  private async faceDetect(data: { assetId: string; imagePath: string }) {
+    const { assetId, imagePath } = data;
+    this.logger.log(`Face detect for ${assetId}`);
+
+    const res = await axios.post(`${ML_URL}/detect/faces`, { image_path: imagePath }, { timeout: 60000 });
+    const faces: any[] = res.data.faces || [];
+
+    await this.prisma.assetJobStatus.update({
+      where: { assetId },
+      data: {
+        faceDetectedAt: new Date(),
+        faceData: faces.length > 0 ? faces : undefined,
+      },
+    });
+
+    this.logger.log(`Face detect done for ${assetId}: ${faces.length} face(s)`);
+  }
+
+  private async sceneTag(data: { assetId: string; imagePath: string }) {
+    const { assetId, imagePath } = data;
+    this.logger.log(`Scene tag for ${assetId}`);
+
+    const res = await axios.post(`${ML_URL}/tag/scene`, { image_path: imagePath }, { timeout: 60000 });
+    const tags: { tag: string; confidence: number }[] = res.data.tags || [];
+
+    if (tags.length > 0) {
+      await this.prisma.$transaction(
+        tags.map((t) =>
+          this.prisma.assetTag.upsert({
+            where: { assetId_tag: { assetId, tag: t.tag } },
+            create: { assetId, tag: t.tag, confidence: t.confidence },
+            update: { confidence: t.confidence },
+          }),
+        ),
+      );
+    }
+
+    await this.prisma.assetJobStatus.update({
+      where: { assetId },
+      data: { sceneTaggedAt: new Date() },
+    });
+
+    this.logger.log(`Scene tag done for ${assetId}: [${tags.map((t) => t.tag).join(', ')}]`);
+  }
+
+  private async geocode(data: { assetId: string; lat: number; lng: number }) {
+    const { assetId, lat, lng } = data;
+    this.logger.log(`Geocode for ${assetId}: ${lat},${lng}`);
+
+    const res = await axios.post(`${ML_URL}/geocode`, { lat, lng }, { timeout: 30000 });
+    const { city, state, country } = res.data;
+
+    await this.prisma.asset.update({
+      where: { id: assetId },
+      data: { locationCity: city, locationState: state, locationCountry: country },
+    });
+
+    await this.prisma.assetJobStatus.update({
+      where: { assetId },
+      data: { geocodeDoneAt: new Date() },
+    });
+
+    this.logger.log(`Geocode done for ${assetId}: ${city}, ${state}, ${country}`);
+  }
+}

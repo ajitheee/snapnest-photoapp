@@ -1,0 +1,16 @@
+fastapi==0.110.0
+uvicorn[standard]==0.28.0
+pydantic==2.6.3
+python-multipart==0.0.9
+# CLIP embeddings
+transformers==4.38.2
+torch==2.2.1
+Pillow==10.2.0
+# Offline reverse geocoding (bundled 40MB dataset, no API calls)
+reverse-geocoder==1.5.1
+# Face detection
+insightface==0.7.3
+onnxruntime==1.17.1
+opencv-python-headless==4.9.0.80
+# HTTP utils
+requests==2.31.0

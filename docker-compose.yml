@@ -1,0 +1,116 @@
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: photoapp-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: photoapp
+      POSTGRES_PASSWORD: photoapp
+      POSTGRES_DB: photoapp
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - photoapp
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U photoapp -d photoapp"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: photoapp-redis
+    restart: unless-stopped
+    networks:
+      - photoapp
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    container_name: photoapp-api
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://photoapp:photoapp@postgres:5432/photoapp
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      UPLOAD_PATH: /uploads
+      THUMBNAIL_PATH: /thumbnails
+      ML_SERVICE_URL: http://ml:3003
+      NODE_ENV: production
+    volumes:
+      - upload_data:/uploads
+      - thumbnail_data:/thumbnails
+    networks:
+      - photoapp
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "3001:3001"
+
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+    container_name: photoapp-web
+    restart: unless-stopped
+    networks:
+      - photoapp
+    depends_on:
+      - api
+    ports:
+      - "4000:3000"
+
+  ml:
+    build:
+      context: ./apps/ml
+      dockerfile: Dockerfile
+    container_name: photoapp-ml
+    restart: unless-stopped
+    environment:
+      ML_DEVICE: cpu
+      HF_HOME: /model-cache/huggingface
+      INSIGHTFACE_HOME: /model-cache/insightface
+    volumes:
+      - ml_models:/model-cache
+      - upload_data:/uploads:ro
+      - thumbnail_data:/thumbnails:ro
+    networks:
+      - photoapp
+    ports:
+      - "3003:3003"
+
+  nginx:
+    image: nginx:1.25-alpine
+    container_name: photoapp-nginx
+    restart: unless-stopped
+    ports:
+      - "8090:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    networks:
+      - photoapp
+    depends_on:
+      - api
+      - web
+      - ml
+
+volumes:
+  postgres_data:
+  upload_data:
+  thumbnail_data:
+  ml_models:
+
+networks:
+  photoapp:
+    driver: bridge

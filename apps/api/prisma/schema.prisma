@@ -1,0 +1,141 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String      @id @default(uuid())
+  email        String      @unique
+  passwordHash String
+  name         String
+  isAdmin      Boolean     @default(false)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  assets       Asset[]
+  albums       Album[]
+  shareLinks   ShareLink[]
+
+  @@map("users")
+}
+
+model Asset {
+  id                 String          @id @default(uuid())
+  ownerId            String
+  owner              User            @relation(fields: [ownerId], references: [id])
+  originalPath       String
+  thumbnailSmallPath String?
+  thumbnailLargePath String?
+  fileName           String
+  fileSizeBytes      BigInt
+  mimeType           String
+  checksum           String          @unique
+  type               AssetType
+  fileCreatedAt      DateTime
+  width              Int?
+  height             Int?
+  duration           Int?
+  exifData           Json?
+  locationLat        Float?
+  locationLng        Float?
+  locationCity       String?
+  locationState      String?
+  locationCountry    String?
+  isFavorite         Boolean         @default(false)
+  isArchived         Boolean         @default(false)
+  isDeleted          Boolean         @default(false)
+  deletedAt          DateTime?
+  clipEmbedding      Unsupported("vector(512)")?
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+  tags               AssetTag[]
+  jobStatus          AssetJobStatus?
+  albums             AlbumAsset[]
+  albumCovers        Album[]         @relation("AlbumCover")
+  shareLinks         ShareLink[]
+
+  @@map("assets")
+}
+
+model AssetTag {
+  id         String   @id @default(uuid())
+  assetId    String
+  asset      Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  tag        String
+  confidence Float
+  createdAt  DateTime @default(now())
+
+  @@unique([assetId, tag])
+  @@map("asset_tags")
+}
+
+model AssetJobStatus {
+  assetId         String    @id
+  asset           Asset     @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  thumbnailDoneAt DateTime?
+  metadataDoneAt  DateTime?
+  geocodeDoneAt   DateTime?
+  transcodeDoneAt DateTime?
+  clipEmbeddedAt  DateTime?
+  faceDetectedAt  DateTime?
+  sceneTaggedAt   DateTime?
+  faceData        Json?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@map("asset_job_status")
+}
+
+model Album {
+  id            String       @id @default(uuid())
+  ownerId       String
+  owner         User         @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  name          String
+  description   String?
+  coverAssetId  String?
+  coverAsset    Asset?       @relation("AlbumCover", fields: [coverAssetId], references: [id], onDelete: SetNull)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  assets        AlbumAsset[]
+  shareLinks    ShareLink[]
+
+  @@map("albums")
+}
+
+model AlbumAsset {
+  albumId  String
+  assetId  String
+  album    Album    @relation(fields: [albumId], references: [id], onDelete: Cascade)
+  asset    Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  addedAt  DateTime @default(now())
+
+  @@id([albumId, assetId])
+  @@map("album_assets")
+}
+
+model ShareLink {
+  id           String    @id @default(uuid())
+  token        String    @unique
+  ownerId      String
+  owner        User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  albumId      String?
+  album        Album?    @relation(fields: [albumId], references: [id], onDelete: Cascade)
+  assetId      String?
+  asset        Asset?    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  passwordHash String?
+  expiresAt    DateTime?
+  viewCount    Int       @default(0)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@map("share_links")
+}
+
+enum AssetType {
+  IMAGE
+  VIDEO
+  OTHER
+}
