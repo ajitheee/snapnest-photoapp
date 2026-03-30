@@ -1,5 +1,5 @@
 import {
-  Controller, Get, Patch, Delete, Param, Body, Query,
+  Controller, Get, Patch, Delete, Post, Param, Body, Query,
   UseGuards, DefaultValuePipe, ParseIntPipe, HttpCode, HttpStatus,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -36,5 +36,10 @@ export class AdminController {
   @Get('stats')
   getStats() {
     return this.adminService.getStats();
+  }
+
+  @Post('requeue-face-detection')
+  requeueFaceDetection() {
+    return this.adminService.requeueMissingFaceDetection();
   }
 }

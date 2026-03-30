@@ -30,9 +30,27 @@
     memoriesLoading = false;
   });
 
+  // Track which group is open so we can remove assets from it
+  let activeGroup: MemoryYearGroup | null = null;
+
   function openMemoryViewer(group: MemoryYearGroup, index: number) {
+    activeGroup = group;
     viewerAssets = group.assets as MemoryAsset[];
     viewerIndex = index;
+  }
+
+  function handleMemoryAssetRemoved(e: CustomEvent<string>) {
+    const removedId = e.detail;
+    // Remove from the active viewer list
+    viewerAssets = viewerAssets.filter(a => a.id !== removedId);
+    // Remove from the year group strip
+    if (activeGroup) {
+      activeGroup.assets = activeGroup.assets.filter(a => a.id !== removedId);
+      activeGroup.count = Math.max(0, activeGroup.count - 1);
+      yearGroups = yearGroups.map(g => g === activeGroup ? { ...activeGroup } : g).filter(g => g.count > 0);
+    }
+    // Refresh smart album covers in case a cover photo was deleted
+    api.smartAlbums.list().then(d => { data = d; }).catch(() => {});
   }
 
   function openPerson(album: any) {
@@ -205,14 +223,12 @@
             <div class="card" on:click={() => openPerson(album)} role="button" tabindex="0"
               on:keydown={(e) => e.key === 'Enter' && openPerson(album)}>
               <div class="thumb">
-                {#if album.coverAssetId}
-                  <img class="card-img" src={api.assets.thumbnailUrl(album.coverAssetId)} alt={album.name} />
-                {:else}
-                  <div class="placeholder">👤</div>
-                {/if}
+                <img class="card-img" src={api.people.faceThumbnailUrl(album.id)} alt={album.name}
+                  on:error={(e) => { const el = e.currentTarget; el.style.display='none'; el.nextElementSibling?.removeAttribute('style'); }} />
+                <div class="placeholder" style="display:none">👤</div>
               </div>
               <div class="card-info">
-                <div class="card-name">{album.name}</div>
+                <div class="card-name">{album.name || '…'}</div>
                 <div class="card-count">{album.assetCount} photo{album.assetCount !== 1 ? 's' : ''}</div>
               </div>
             </div>
@@ -298,4 +314,5 @@
   bind:viewerIndex
   assets={viewerAssets}
   mode="default"
+  on:assetRemoved={handleMemoryAssetRemoved}
 />

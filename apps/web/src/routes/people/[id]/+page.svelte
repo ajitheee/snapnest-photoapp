@@ -68,6 +68,7 @@
   .edit-btn:hover { border-color: var(--border-2); color: var(--text); }
   .name-input { font-size: 1.3rem; font-weight: 700; background: var(--surface-2); border: 1px solid var(--accent); border-radius: 6px; color: var(--text); padding: 0.25rem 0.5rem; }
   .save-btn { background: var(--accent); border: none; border-radius: 6px; color: #fff; padding: 0.3rem 0.7rem; font-size: 0.85rem; font-weight: 600; }
+  .unnamed-h2 { color: var(--text-muted); font-style: italic; }
   .count { color: var(--text-muted); font-size: 0.9rem; }
   .loading, .error-msg, .empty { text-align: center; padding: 4rem 2rem; color: var(--text-muted); }
   .error-msg { color: var(--error); }
@@ -88,8 +89,13 @@
           <button class="save-btn" on:click={saveName}>Save</button>
           <button class="edit-btn" on:click={() => editing = false}>Cancel</button>
         {:else}
-          <h2>{person.name}</h2>
-          <button class="edit-btn" on:click={() => editing = true}>Rename</button>
+          {#if person.name}
+            <h2>{person.name}</h2>
+            <button class="edit-btn" on:click={() => editing = true}>Rename</button>
+          {:else}
+            <h2 class="unnamed-h2">Unknown Person</h2>
+            <button class="save-btn" on:click={() => editing = true}>+ Add name</button>
+          {/if}
         {/if}
       </div>
       <span class="count">{assets.length} photos</span>

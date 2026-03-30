@@ -347,6 +347,10 @@ export const api = {
     async merge(sourceId: string, targetId: string): Promise<Person> {
       return request<Person>(`/people/${sourceId}/merge/${targetId}`, { method: 'POST' });
     },
+    faceThumbnailUrl(id: string): string {
+      const token = typeof localStorage !== 'undefined' ? localStorage.getItem('photoapp_token') : null;
+      return `/api/people/${id}/face-thumbnail${token ? `?token=${encodeURIComponent(token)}` : ''}`;
+    },
   },
 
   smartAlbums: {

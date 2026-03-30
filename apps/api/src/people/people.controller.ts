@@ -1,7 +1,8 @@
 import {
   Controller, Get, Post, Patch, Delete, Param, Body, Request,
-  UseGuards, Query, DefaultValuePipe, ParseIntPipe,
+  UseGuards, Query, DefaultValuePipe, ParseIntPipe, Res,
 } from '@nestjs/common';
+import { Response } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PeopleService } from './people.service';
 import { User } from '@prisma/client';
@@ -19,6 +20,18 @@ export class PeopleController {
   @Post('cluster')
   async cluster(@Request() req: { user: User }) {
     return this.peopleService.clusterFaces(req.user.id);
+  }
+
+  @Get(':id/face-thumbnail')
+  async faceThumbnail(
+    @Param('id') id: string,
+    @Request() req: { user: User },
+    @Res() res: Response,
+  ) {
+    const buf = await this.peopleService.getFaceCrop(req.user.id, id);
+    res.setHeader('Content-Type', 'image/webp');
+    res.setHeader('Cache-Control', 'private, max-age=86400');
+    res.end(buf);
   }
 
   @Get(':id')

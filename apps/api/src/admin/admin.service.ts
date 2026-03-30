@@ -85,6 +85,46 @@ export class AdminService {
     }
   }
 
+  /** Queue face detection for every IMAGE asset that hasn't been processed yet.
+   *  Uses the large thumbnail (local filesystem path) so HEIC/RAW formats work. */
+  async requeueMissingFaceDetection(): Promise<{ queued: number }> {
+    const THUMBNAIL_DIR = process.env.THUMBNAIL_PATH || '/thumbnails';
+
+    const assets = await this.prisma.asset.findMany({
+      where: {
+        isDeleted: false,
+        type: 'IMAGE',
+        jobStatus: { faceDetectedAt: null },
+      },
+      select: { id: true, thumbnailLargePath: true, originalPath: true },
+    });
+
+    let queued = 0;
+    for (const asset of assets) {
+      // Prefer large thumbnail (avoids HEIC format issues in ML service)
+      let imagePath: string | null = null;
+      if (asset.thumbnailLargePath) {
+        const localThumb = `${THUMBNAIL_DIR}/${asset.thumbnailLargePath.replace('thumbnails/', '')}`;
+        if (fs.existsSync(localThumb)) {
+          imagePath = localThumb;
+        }
+      }
+      // Fall back to local original if still on disk
+      if (!imagePath && asset.originalPath) {
+        const UPLOAD_DIR = process.env.UPLOAD_PATH || '/uploads';
+        const filename = asset.originalPath.replace('originals/', '');
+        const localOrig = `${UPLOAD_DIR}/${filename}`;
+        if (fs.existsSync(localOrig)) imagePath = localOrig;
+      }
+      if (!imagePath) continue;
+
+      await this.mlQueue.add('face-detect', { assetId: asset.id, imagePath }, { attempts: 2 });
+      queued++;
+    }
+    this.logger.log(`Queued face detection for ${queued} assets`);
+    return { queued };
+  }
+
   async getStats() {
     const [userCount, assetCount, storageResult] = await this.prisma.$transaction([
       this.prisma.user.count(),

@@ -53,6 +53,7 @@
   .avatar-placeholder { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 3rem; background: var(--surface-2); }
   .card-info { padding: 0.6rem 0.75rem 0.75rem; }
   .card-name { font-size: 0.9rem; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .card-name.unnamed { color: var(--text-muted); font-weight: 400; font-style: italic; }
   .card-count { font-size: 0.78rem; color: var(--text-muted); margin-top: 2px; }
 </style>
 
@@ -83,14 +84,20 @@
       {#each people as person (person.id)}
         <a class="card" href="/people/{person.id}">
           <div class="thumb">
-            {#if person.coverAssetId}
-              <img src={api.assets.thumbnailUrl(person.coverAssetId)} alt={person.name} />
+            {#if person.faceCount > 0}
+              <img src={api.people.faceThumbnailUrl(person.id)} alt={person.name}
+                on:error={(e) => { const el = e.currentTarget; el.style.display='none'; el.nextElementSibling?.removeAttribute('style'); }} />
+              <div class="avatar-placeholder" style="display:none">👤</div>
             {:else}
               <div class="avatar-placeholder">👤</div>
             {/if}
           </div>
           <div class="card-info">
-            <div class="card-name">{person.name}</div>
+            {#if person.name}
+              <div class="card-name">{person.name}</div>
+            {:else}
+              <div class="card-name unnamed">Tap to name</div>
+            {/if}
             <div class="card-count">{person.faceCount} photo{person.faceCount !== 1 ? 's' : ''}</div>
           </div>
         </a>
