@@ -123,17 +123,17 @@
   }
 
   .back-link {
-    color: #666;
+    color: var(--text-muted);
     font-size: 0.9rem;
     transition: color 0.15s;
   }
 
   .back-link:hover {
-    color: #fff;
+    color: var(--text);
   }
 
   .drop-zone {
-    border: 2px dashed #333;
+    border: 2px dashed var(--border);
     border-radius: 12px;
     padding: 3rem 2rem;
     text-align: center;
@@ -144,12 +144,12 @@
   }
 
   .drop-zone.dragging {
-    border-color: #4f8ef7;
-    background: rgba(79, 142, 247, 0.05);
+    border-color: var(--accent);
+    background: var(--active-bg);
   }
 
   .drop-zone:hover {
-    border-color: #444;
+    border-color: var(--border-2);
   }
 
   .drop-icon {
@@ -165,7 +165,7 @@
   }
 
   .drop-sub {
-    color: #666;
+    color: var(--text-muted);
     font-size: 0.9rem;
     margin-bottom: 1.5rem;
   }
@@ -173,17 +173,17 @@
   .browse-btn {
     display: inline-block;
     padding: 0.5rem 1.2rem;
-    background: #1a1a1a;
-    border: 1px solid #333;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
     border-radius: 8px;
-    color: #ccc;
+    color: var(--text-2);
     font-size: 0.9rem;
     transition: all 0.15s;
   }
 
   .browse-btn:hover {
-    border-color: #555;
-    color: #fff;
+    border-color: var(--border-2);
+    color: var(--text);
   }
 
   .file-input {
@@ -204,7 +204,7 @@
 
   .upload-btn {
     padding: 0.6rem 1.4rem;
-    background: #4f8ef7;
+    background: var(--accent);
     border: none;
     border-radius: 8px;
     color: #fff;
@@ -214,7 +214,7 @@
   }
 
   .upload-btn:hover:not(:disabled) {
-    background: #3a7de8;
+    background: var(--accent-hover);
   }
 
   .upload-btn:disabled {
@@ -225,20 +225,20 @@
   .clear-btn {
     padding: 0.6rem 1rem;
     background: transparent;
-    border: 1px solid #333;
+    border: 1px solid var(--border);
     border-radius: 8px;
-    color: #666;
+    color: var(--text-muted);
     font-size: 0.9rem;
     transition: all 0.15s;
   }
 
   .clear-btn:hover {
-    border-color: #555;
-    color: #aaa;
+    border-color: var(--border-2);
+    color: var(--text-2);
   }
 
   .summary {
-    color: #666;
+    color: var(--text-muted);
     font-size: 0.9rem;
     margin-left: auto;
   }
@@ -254,8 +254,8 @@
     align-items: center;
     gap: 1rem;
     padding: 0.75rem 1rem;
-    background: #1a1a1a;
-    border: 1px solid #2a2a2a;
+    background: var(--surface);
+    border: 1px solid var(--border);
     border-radius: 8px;
   }
 
@@ -278,7 +278,7 @@
 
   .file-meta {
     font-size: 0.78rem;
-    color: #555;
+    color: var(--text-muted);
     margin-top: 2px;
   }
 
@@ -289,16 +289,16 @@
     border-radius: 4px;
   }
 
-  .status-pending { color: #888; }
-  .status-uploading { color: #4f8ef7; }
-  .status-done { color: #4ade80; }
-  .status-error { color: #f87171; }
-  .status-duplicate { color: #fb923c; }
+  .status-pending { color: var(--text-muted); }
+  .status-uploading { color: var(--accent); }
+  .status-done { color: #16a34a; }
+  .status-error { color: var(--error); }
+  .status-duplicate { color: #d97706; }
 
   .remove-btn {
     background: transparent;
     border: none;
-    color: #444;
+    color: var(--text-subtle);
     font-size: 1rem;
     padding: 0 0.25rem;
     transition: color 0.15s;
@@ -306,12 +306,12 @@
   }
 
   .remove-btn:hover {
-    color: #f87171;
+    color: var(--error);
   }
 
   .progress-bar {
     height: 2px;
-    background: #222;
+    background: var(--border);
     border-radius: 1px;
     margin-top: 4px;
     overflow: hidden;
@@ -319,7 +319,7 @@
 
   .progress-fill {
     height: 100%;
-    background: #4f8ef7;
+    background: var(--accent);
     border-radius: 1px;
     transition: width 0.2s;
   }
@@ -390,7 +390,7 @@
               </div>
             {/if}
             {#if item.error}
-              <div class="file-meta" style="color: #f87171;">{item.error}</div>
+              <div class="file-meta" style="color: var(--error);">{item.error}</div>
             {/if}
           </div>
 

@@ -93,13 +93,13 @@ Building a self-hosted photo and video management application inspired by Immich
 - [ ] Map / geo view (GPS EXIF → leaflet.js map)
 - [ ] Object/scene tagging via CLIP zero-shot classification
 
-### Phase 5 — Mobile & sync (weeks 19–24)
-- [ ] Automatic background backup (Android foreground service / iOS BGTaskScheduler)
-- [ ] Incremental sync (hash-based dedup, only upload new/changed files)
-- [ ] Offline thumbnail cache on device
-- [ ] Live photo / motion photo support
-- [ ] Push notifications (backup status, shared album activity)
-- [ ] iOS home screen widget (random memory photo)
+### Phase 5 — Mobile & sync (weeks 19–24) ✅
+- [x] Automatic background backup (Android foreground service / iOS BGTaskScheduler)
+- [x] Incremental sync (hash-based dedup, only upload new/changed files)
+- [x] Offline thumbnail cache on device
+- [x] Live photo / motion photo support
+- [x] Push notifications (backup status, shared album activity)
+- [x] iOS home screen widget (random memory photo)
 
 ### Phase 6 — Production hardening (ongoing)
 - [ ] Prometheus metrics + Grafana dashboards
@@ -278,7 +278,14 @@ services:
 
 ## Current status
 
-- [ ] Phase 1 not yet started
+- [ ] Phase 1 not yet started (API scaffold, auth, basic upload, web gallery)
+- [x] Phase 5 — Mobile & Sync complete (2026-03-27)
+  - Flutter app created at `apps/mobile/`
+  - Backend: DeviceToken + UploadSession Prisma models, DevicesModule, NotificationsModule, MemoriesModule
+  - New API endpoints: POST /devices/register, DELETE /devices/:token, GET /memories, POST /assets/check-hashes, POST/chunk/complete /assets/upload-session/:id, POST /assets/:id/live-video
+  - Android: SyncForegroundService.kt, WorkManager config, AndroidManifest with all permissions
+  - iOS: AppDelegate.swift with BGTaskScheduler registration, PhotoMemoriesWidget WidgetKit extension
+  - Push notifications via Firebase (optional — activate by setting FIREBASE_SERVICE_ACCOUNT env var)
 - Architecture and tech stack decided
 - This memory file created on: 2026-03-24
 

@@ -68,36 +68,36 @@
   .page { padding: 1.5rem; max-width: 900px; margin: 0 auto; }
   .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.5rem; }
   h2 { font-size: 1.5rem; font-weight: 700; }
-  .new-btn { padding: 0.5rem 1rem; background: #4f8ef7; border: none; border-radius: 8px; color: #fff; font-size: 0.9rem; font-weight: 600; }
-  .new-btn:hover { background: #3a7de8; }
-  .create-form { background: #1a1a1a; border: 1px solid #333; border-radius: 10px; padding: 1.2rem; margin-bottom: 1.5rem; display: flex; flex-direction: column; gap: 0.8rem; }
+  .new-btn { padding: 0.5rem 1rem; background: var(--accent); border: none; border-radius: 8px; color: #fff; font-size: 0.9rem; font-weight: 600; }
+  .new-btn:hover { background: var(--accent-hover); }
+  .create-form { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1.2rem; margin-bottom: 1.5rem; display: flex; flex-direction: column; gap: 0.8rem; }
   .form-row { display: flex; gap: 0.5rem; align-items: center; }
-  .form-row label { color: #aaa; font-size: 0.85rem; min-width: 80px; }
-  .form-row input, .form-row select { background: #111; border: 1px solid #333; border-radius: 6px; color: #fff; padding: 0.4rem 0.6rem; font-size: 0.9rem; flex: 1; }
+  .form-row label { color: var(--text-muted); font-size: 0.85rem; min-width: 80px; }
+  .form-row input, .form-row select { background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; color: var(--text); padding: 0.4rem 0.6rem; font-size: 0.9rem; flex: 1; }
   .type-toggle { display: flex; gap: 0.5rem; }
-  .type-btn { padding: 0.35rem 0.75rem; background: #111; border: 1px solid #333; border-radius: 6px; color: #aaa; font-size: 0.85rem; cursor: pointer; }
-  .type-btn.active { background: #4f8ef7; border-color: #4f8ef7; color: #fff; }
+  .type-btn { padding: 0.35rem 0.75rem; background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; color: var(--text-muted); font-size: 0.85rem; cursor: pointer; }
+  .type-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
   .form-actions { display: flex; gap: 0.5rem; justify-content: flex-end; }
-  .btn-cancel { padding: 0.4rem 0.8rem; background: #222; border: 1px solid #444; border-radius: 6px; color: #aaa; font-size: 0.9rem; }
-  .btn-save { padding: 0.4rem 0.8rem; background: #4f8ef7; border: none; border-radius: 6px; color: #fff; font-size: 0.9rem; font-weight: 600; }
+  .btn-cancel { padding: 0.4rem 0.8rem; background: var(--surface-2); border: 1px solid var(--border-2); border-radius: 6px; color: var(--text-muted); font-size: 0.9rem; }
+  .btn-save { padding: 0.4rem 0.8rem; background: var(--accent); border: none; border-radius: 6px; color: #fff; font-size: 0.9rem; font-weight: 600; }
   .btn-save:disabled { opacity: 0.5; cursor: not-allowed; }
-  .form-err { color: #f87171; font-size: 0.85rem; }
-  .loading, .error-msg, .empty { text-align: center; padding: 4rem 2rem; color: #666; }
-  .error-msg { color: #f87171; }
+  .form-err { color: var(--error); font-size: 0.85rem; }
+  .loading, .error-msg, .empty { text-align: center; padding: 4rem 2rem; color: var(--text-muted); }
+  .error-msg { color: var(--error); }
   .link-list { display: flex; flex-direction: column; gap: 0.75rem; }
-  .link-card { background: #111; border: 1px solid #222; border-radius: 10px; padding: 1rem; display: flex; flex-direction: column; gap: 0.5rem; }
+  .link-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1rem; display: flex; flex-direction: column; gap: 0.5rem; }
   .link-top { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; flex-wrap: wrap; }
   .link-target { font-weight: 600; font-size: 0.95rem; }
-  .link-meta { color: #666; font-size: 0.8rem; display: flex; gap: 0.8rem; flex-wrap: wrap; }
+  .link-meta { color: var(--text-muted); font-size: 0.8rem; display: flex; gap: 0.8rem; flex-wrap: wrap; }
   .link-url-row { display: flex; gap: 0.5rem; align-items: center; }
-  .link-url { font-family: monospace; font-size: 0.8rem; color: #4f8ef7; background: #0a0a0a; border: 1px solid #222; border-radius: 4px; padding: 3px 8px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .copy-btn { padding: 3px 8px; background: #1a1a1a; border: 1px solid #333; border-radius: 4px; color: #aaa; font-size: 0.8rem; cursor: pointer; white-space: nowrap; }
-  .copy-btn.copied { color: #4ade80; border-color: #4ade80; }
-  .del-btn { padding: 3px 8px; background: none; border: 1px solid #333; border-radius: 4px; color: #666; font-size: 0.8rem; cursor: pointer; }
-  .del-btn:hover { border-color: #f87171; color: #f87171; }
-  .badge { padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; background: #1a1a1a; color: #aaa; }
-  .badge.lock { background: #1a2a1a; color: #4ade80; }
-  .badge.expired { background: #2a1a1a; color: #f87171; }
+  .link-url { font-family: monospace; font-size: 0.8rem; color: var(--accent); background: var(--surface-2); border: 1px solid var(--border); border-radius: 4px; padding: 3px 8px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .copy-btn { padding: 3px 8px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 4px; color: var(--text-muted); font-size: 0.8rem; cursor: pointer; white-space: nowrap; }
+  .copy-btn.copied { color: #16a34a; border-color: #16a34a; }
+  .del-btn { padding: 3px 8px; background: none; border: 1px solid var(--border); border-radius: 4px; color: var(--text-muted); font-size: 0.8rem; cursor: pointer; }
+  .del-btn:hover { border-color: var(--error); color: var(--error); }
+  .badge { padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; background: var(--surface-2); color: var(--text-muted); }
+  .badge.lock { background: #dcfce7; color: #16a34a; }
+  .badge.expired { background: var(--error-bg); color: var(--error); }
 </style>
 
 <div class="page">

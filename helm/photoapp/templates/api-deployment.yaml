@@ -1,0 +1,130 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "photoapp.fullname" . }}-api
+  labels:
+    {{- include "photoapp.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "photoapp.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: api
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "photoapp.name" . }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        app.kubernetes.io/component: api
+    spec:
+      containers:
+        - name: api
+          image: "{{ .Values.image.api.repository }}:{{ .Values.image.api.tag }}"
+          imagePullPolicy: {{ .Values.image.api.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 3001
+          env:
+            - name: DATABASE_URL
+              value: "postgresql://{{ .Values.postgresql.auth.username }}:{{ .Values.postgresql.auth.password }}@{{ include "photoapp.postgresql.host" . }}:5432/{{ .Values.postgresql.auth.database }}"
+            - name: REDIS_HOST
+              value: {{ include "photoapp.redis.host" . | quote }}
+            - name: REDIS_PORT
+              value: "6379"
+            - name: UPLOAD_PATH
+              value: /uploads
+            - name: THUMBNAIL_PATH
+              value: /thumbnails
+            - name: ML_SERVICE_URL
+              value: "http://{{ include "photoapp.fullname" . }}-ml:3003"
+            - name: NODE_ENV
+              value: {{ .Values.api.nodeEnv | quote }}
+            - name: APP_URL
+              value: {{ .Values.api.appUrl | quote }}
+            - name: FRONTEND_URL
+              value: {{ .Values.api.frontendUrl | quote }}
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "photoapp.fullname" . }}-secrets
+                  key: JWT_SECRET
+            - name: GOOGLE_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "photoapp.fullname" . }}-secrets
+                  key: GOOGLE_CLIENT_ID
+            - name: GOOGLE_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "photoapp.fullname" . }}-secrets
+                  key: GOOGLE_CLIENT_SECRET
+            - name: OIDC_ISSUER_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "photoapp.fullname" . }}-secrets
+                  key: OIDC_ISSUER_URL
+            - name: OIDC_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "photoapp.fullname" . }}-secrets
+                  key: OIDC_CLIENT_ID
+            - name: OIDC_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "photoapp.fullname" . }}-secrets
+                  key: OIDC_CLIENT_SECRET
+          volumeMounts:
+            - name: uploads
+              mountPath: /uploads
+            - name: thumbnails
+              mountPath: /thumbnails
+          resources:
+            {{- toYaml .Values.resources.api | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /api/auth/me
+              port: 3001
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /api/auth/me
+              port: 3001
+            initialDelaySeconds: 10
+            periodSeconds: 10
+      volumes:
+        - name: uploads
+          {{- if .Values.persistence.uploads.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "photoapp.fullname" . }}-uploads
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        - name: thumbnails
+          {{- if .Values.persistence.thumbnails.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "photoapp.fullname" . }}-thumbnails
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "photoapp.fullname" . }}-api
+  labels:
+    {{- include "photoapp.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+spec:
+  type: ClusterIP
+  ports:
+    - port: 3001
+      targetPort: http
+      name: http
+  selector:
+    app.kubernetes.io/name: {{ include "photoapp.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: api

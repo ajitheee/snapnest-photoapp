@@ -145,6 +145,22 @@ class GeocodeResponse(BaseModel):
     state: str
     country: str
 
+class FaceClusterInput(BaseModel):
+    face_id: str
+    embedding: list[float]
+
+class ClusterResult(BaseModel):
+    face_id: str
+    cluster_id: int
+
+class FaceClusterRequest(BaseModel):
+    faces: list[FaceClusterInput]
+    threshold: float = 0.45
+
+class FaceClusterResponse(BaseModel):
+    clusters: list[ClusterResult]
+    num_clusters: int
+
 class HealthResponse(BaseModel):
     status: str
     device: str
@@ -269,6 +285,45 @@ async def tag_scene(request: SceneTagRequest) -> SceneTagResponse:
     loop = asyncio.get_event_loop()
     tags = await loop.run_in_executor(None, _run)
     return SceneTagResponse(tags=[SceneTag(**t) for t in tags])
+
+
+@app.post("/cluster/faces", response_model=FaceClusterResponse, tags=["faces"])
+async def cluster_faces(request: FaceClusterRequest) -> FaceClusterResponse:
+    import numpy as np
+
+    if len(request.faces) == 0:
+        return FaceClusterResponse(clusters=[], num_clusters=0)
+
+    if len(request.faces) == 1:
+        return FaceClusterResponse(
+            clusters=[ClusterResult(face_id=request.faces[0].face_id, cluster_id=0)],
+            num_clusters=1
+        )
+
+    def _cluster():
+        from sklearn.cluster import DBSCAN
+        embeddings = np.array([f.embedding for f in request.faces], dtype=np.float32)
+        norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
+        embeddings = embeddings / np.maximum(norms, 1e-10)
+
+        dbscan = DBSCAN(
+            eps=request.threshold,
+            min_samples=1,
+            metric='cosine',
+            n_jobs=-1,
+        )
+        labels = dbscan.fit_predict(embeddings)
+        return labels.tolist()
+
+    loop = asyncio.get_event_loop()
+    labels = await loop.run_in_executor(None, _cluster)
+
+    clusters = [
+        ClusterResult(face_id=f.face_id, cluster_id=int(label))
+        for f, label in zip(request.faces, labels)
+    ]
+    num_clusters = len(set(l for l in labels if l >= 0))
+    return FaceClusterResponse(clusters=clusters, num_clusters=num_clusters)
 
 
 @app.post("/geocode", response_model=GeocodeResponse, tags=["geo"])

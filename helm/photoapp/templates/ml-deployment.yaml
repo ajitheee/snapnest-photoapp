@@ -1,0 +1,86 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "photoapp.fullname" . }}-ml
+  labels:
+    {{- include "photoapp.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ml
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "photoapp.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: ml
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "photoapp.name" . }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        app.kubernetes.io/component: ml
+    spec:
+      containers:
+        - name: ml
+          image: "{{ .Values.image.ml.repository }}:{{ .Values.image.ml.tag }}"
+          imagePullPolicy: {{ .Values.image.ml.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 3003
+          env:
+            - name: ML_DEVICE
+              value: cpu
+            - name: HF_HOME
+              value: /model-cache/huggingface
+            - name: INSIGHTFACE_HOME
+              value: /model-cache/insightface
+          volumeMounts:
+            - name: ml-models
+              mountPath: /model-cache
+            - name: uploads
+              mountPath: /uploads
+              readOnly: true
+            - name: thumbnails
+              mountPath: /thumbnails
+              readOnly: true
+          resources:
+            {{- toYaml .Values.resources.ml | nindent 12 }}
+      volumes:
+        - name: ml-models
+          {{- if .Values.persistence.mlModels.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "photoapp.fullname" . }}-ml-models
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        - name: uploads
+          {{- if .Values.persistence.uploads.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "photoapp.fullname" . }}-uploads
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        - name: thumbnails
+          {{- if .Values.persistence.thumbnails.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "photoapp.fullname" . }}-thumbnails
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "photoapp.fullname" . }}-ml
+  labels:
+    {{- include "photoapp.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ml
+spec:
+  type: ClusterIP
+  ports:
+    - port: 3003
+      targetPort: http
+      name: http
+  selector:
+    app.kubernetes.io/name: {{ include "photoapp.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: ml

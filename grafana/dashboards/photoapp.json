@@ -1,0 +1,89 @@
+{
+  "title": "PhotoApp Overview",
+  "uid": "photoapp-overview",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "30s",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Uploads Total",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "expr": "sum(photoapp_uploads_total)",
+          "legendFormat": "Total Uploads"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Uploads by Type",
+      "type": "piechart",
+      "gridPos": { "h": 8, "w": 6, "x": 6, "y": 0 },
+      "targets": [
+        {
+          "expr": "sum by(asset_type) (photoapp_uploads_total)",
+          "legendFormat": "{{asset_type}}"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Total Users",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "expr": "photoapp_users_total",
+          "legendFormat": "Users"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Storage Used (GB)",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "targets": [
+        {
+          "expr": "photoapp_storage_bytes_total / 1073741824",
+          "legendFormat": "GB"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "GB",
+          "decimals": 2
+        }
+      }
+    },
+    {
+      "id": 5,
+      "title": "Queue Depths",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "targets": [
+        {
+          "expr": "photoapp_queue_depth",
+          "legendFormat": "{{queue_name}}"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Upload Rate (per minute)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "targets": [
+        {
+          "expr": "rate(photoapp_uploads_total[1m]) * 60",
+          "legendFormat": "{{asset_type}}"
+        }
+      ]
+    }
+  ],
+  "time": { "from": "now-1h", "to": "now" },
+  "timepicker": {}
+}

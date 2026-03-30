@@ -1,0 +1,53 @@
+{{- if .Values.persistence.uploads.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "photoapp.fullname" . }}-uploads
+  labels:
+    {{- include "photoapp.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.persistence.uploads.accessMode }}
+  {{- if .Values.persistence.uploads.storageClass }}
+  storageClassName: {{ .Values.persistence.uploads.storageClass }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.uploads.size }}
+---
+{{- end }}
+{{- if .Values.persistence.thumbnails.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "photoapp.fullname" . }}-thumbnails
+  labels:
+    {{- include "photoapp.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.persistence.thumbnails.accessMode }}
+  {{- if .Values.persistence.thumbnails.storageClass }}
+  storageClassName: {{ .Values.persistence.thumbnails.storageClass }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.thumbnails.size }}
+---
+{{- end }}
+{{- if .Values.persistence.mlModels.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "photoapp.fullname" . }}-ml-models
+  labels:
+    {{- include "photoapp.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.persistence.mlModels.accessMode }}
+  {{- if .Values.persistence.mlModels.storageClass }}
+  storageClassName: {{ .Values.persistence.mlModels.storageClass }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.mlModels.size }}
+{{- end }}

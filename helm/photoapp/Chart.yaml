@@ -1,0 +1,13 @@
+apiVersion: v2
+name: photoapp
+description: Self-hosted photo management application
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+keywords:
+  - photos
+  - media
+  - self-hosted
+maintainers:
+  - name: photoapp
+home: https://github.com/your-org/photoapp

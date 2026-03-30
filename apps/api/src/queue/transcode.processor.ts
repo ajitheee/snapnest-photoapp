@@ -7,6 +7,7 @@ import * as fs from 'fs';
 import * as sharp from 'sharp';
 import { PrismaService } from '../prisma/prisma.service';
 import { QueueService } from './queue.service';
+import { StorageService } from '../storage/storage.service';
 
 const UPLOAD_DIR = process.env.UPLOAD_PATH || '/uploads';
 const THUMBNAIL_DIR = process.env.THUMBNAIL_PATH || '/thumbnails';
@@ -33,6 +34,7 @@ export class TranscodeProcessor extends WorkerHost {
   constructor(
     private readonly prisma: PrismaService,
     private readonly queueService: QueueService,
+    private readonly storage: StorageService,
   ) {
     super();
   }
@@ -114,14 +116,31 @@ export class TranscodeProcessor extends WorkerHost {
         .toFile(lgPath);
     }
 
+    // Upload thumbnails to S3
+    const smKey = `thumbnails/${assetId}-sm.webp`;
+    const lgKey = `thumbnails/${assetId}-lg.webp`;
+    let smS3Key: string | undefined;
+    let lgS3Key: string | undefined;
+    if (fs.existsSync(smPath)) {
+      await this.storage.putFile(smPath, smKey, 'image/webp');
+      smS3Key = smKey;
+    }
+    if (fs.existsSync(lgPath)) {
+      await this.storage.putFile(lgPath, lgKey, 'image/webp');
+      lgS3Key = lgKey;
+    }
+
+    // Upload HLS directory to S3
+    await this.storage.uploadDir(hlsDir, `hls/${assetId}`);
+
     await this.prisma.asset.update({
       where: { id: assetId },
       data: {
         duration,
         ...(width && { width }),
         ...(height && { height }),
-        thumbnailSmallPath: fs.existsSync(smPath) ? smPath : undefined,
-        thumbnailLargePath: fs.existsSync(lgPath) ? lgPath : undefined,
+        ...(smS3Key && { thumbnailSmallPath: smS3Key }),
+        ...(lgS3Key && { thumbnailLargePath: lgS3Key }),
       },
     });
 
@@ -130,7 +149,7 @@ export class TranscodeProcessor extends WorkerHost {
       data: { transcodeDoneAt: new Date() },
     });
 
-    // Now trigger ML with the poster frame or original
+    // Trigger ML with LOCAL paths (ML service reads from mounted volume)
     await this.queueService.enqueueMlJobs(
       assetId,
       fs.existsSync(smPath) ? smPath : filePath,

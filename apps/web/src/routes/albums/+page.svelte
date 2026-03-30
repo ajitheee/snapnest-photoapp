@@ -48,29 +48,29 @@
   .page { padding: 1.5rem; max-width: 1400px; margin: 0 auto; }
   .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.5rem; }
   h2 { font-size: 1.5rem; font-weight: 700; }
-  .new-btn { padding: 0.5rem 1rem; background: #4f8ef7; border: none; border-radius: 8px; color: #fff; font-size: 0.9rem; font-weight: 600; }
-  .new-btn:hover { background: #3a7de8; }
-  .create-form { background: #1a1a1a; border: 1px solid #333; border-radius: 10px; padding: 1.2rem; margin-bottom: 1.5rem; display: flex; flex-direction: column; gap: 0.8rem; }
-  .create-form input, .create-form textarea { background: #111; border: 1px solid #333; border-radius: 6px; color: #fff; padding: 0.5rem 0.75rem; font-size: 0.9rem; width: 100%; }
+  .new-btn { padding: 0.5rem 1rem; background: var(--accent); border: none; border-radius: 8px; color: #fff; font-size: 0.9rem; font-weight: 600; }
+  .new-btn:hover { background: var(--accent-hover); }
+  .create-form { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1.2rem; margin-bottom: 1.5rem; display: flex; flex-direction: column; gap: 0.8rem; }
+  .create-form input, .create-form textarea { background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; color: var(--text); padding: 0.5rem 0.75rem; font-size: 0.9rem; width: 100%; }
   .create-form textarea { resize: vertical; min-height: 60px; }
   .form-actions { display: flex; gap: 0.5rem; justify-content: flex-end; }
-  .btn-cancel { padding: 0.4rem 0.8rem; background: #222; border: 1px solid #444; border-radius: 6px; color: #aaa; font-size: 0.9rem; }
-  .btn-save { padding: 0.4rem 0.8rem; background: #4f8ef7; border: none; border-radius: 6px; color: #fff; font-size: 0.9rem; font-weight: 600; }
+  .btn-cancel { padding: 0.4rem 0.8rem; background: var(--surface-2); border: 1px solid var(--border-2); border-radius: 6px; color: var(--text-muted); font-size: 0.9rem; }
+  .btn-save { padding: 0.4rem 0.8rem; background: var(--accent); border: none; border-radius: 6px; color: #fff; font-size: 0.9rem; font-weight: 600; }
   .btn-save:disabled { opacity: 0.5; cursor: not-allowed; }
-  .form-err { color: #f87171; font-size: 0.85rem; }
-  .loading, .error-msg, .empty { text-align: center; padding: 4rem 2rem; color: #666; }
-  .error-msg { color: #f87171; }
+  .form-err { color: var(--error); font-size: 0.85rem; }
+  .loading, .error-msg, .empty { text-align: center; padding: 4rem 2rem; color: var(--text-muted); }
+  .error-msg { color: var(--error); }
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 1rem; }
-  .album-card { background: #111; border: 1px solid #222; border-radius: 10px; overflow: hidden; cursor: pointer; transition: border-color 0.15s; }
-  .album-card:hover { border-color: #444; }
-  .cover { aspect-ratio: 4/3; background: #1a1a1a; overflow: hidden; }
+  .album-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; cursor: pointer; transition: border-color 0.15s; }
+  .album-card:hover { border-color: var(--border-2); }
+  .cover { aspect-ratio: 4/3; background: var(--surface-2); overflow: hidden; }
   .cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
-  .cover-placeholder { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 2.5rem; color: #333; }
+  .cover-placeholder { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 2.5rem; color: var(--border-2); }
   .card-body { padding: 0.75rem; }
   .album-name { font-weight: 600; font-size: 0.95rem; margin-bottom: 0.2rem; }
-  .album-meta { color: #666; font-size: 0.8rem; display: flex; justify-content: space-between; }
-  .del-btn { background: none; border: none; color: #555; font-size: 0.8rem; cursor: pointer; padding: 0; }
-  .del-btn:hover { color: #f87171; }
+  .album-meta { color: var(--text-muted); font-size: 0.8rem; display: flex; justify-content: space-between; }
+  .del-btn { background: none; border: none; color: var(--text-subtle); font-size: 0.8rem; cursor: pointer; padding: 0; }
+  .del-btn:hover { color: var(--error); }
 </style>
 
 <div class="page">

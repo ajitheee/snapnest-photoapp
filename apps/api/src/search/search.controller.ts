@@ -12,10 +12,12 @@ export class SearchController {
   search(
     @Query('q') query: string,
     @Query('mode') mode: 'text' | 'semantic' | 'auto' = 'auto',
+    @Query('month') month: string,
+    @Query('location') location: string,
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
-    @Query('limit', new DefaultValuePipe(30), ParseIntPipe) limit: number,
+    @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number,
     @Request() req: { user: User },
   ) {
-    return this.searchService.search(req.user.id, query, mode, page, limit);
+    return this.searchService.search(req.user.id, query, mode, page, limit, month, location);
   }
 }

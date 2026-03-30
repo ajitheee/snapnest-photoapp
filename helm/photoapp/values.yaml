@@ -1,0 +1,119 @@
+## PhotoApp Helm chart values
+
+replicaCount: 1
+
+image:
+  api:
+    repository: photoapp-api
+    tag: latest
+    pullPolicy: IfNotPresent
+  web:
+    repository: photoapp-web
+    tag: latest
+    pullPolicy: IfNotPresent
+  ml:
+    repository: photoapp-ml
+    tag: latest
+    pullPolicy: IfNotPresent
+
+## Ingress
+ingress:
+  enabled: true
+  className: nginx
+  host: photoapp.example.com
+  tls: []
+  # - secretName: photoapp-tls
+  #   hosts:
+  #     - photoapp.example.com
+
+## API configuration
+api:
+  jwtSecret: change-me-in-production
+  appUrl: http://photoapp.example.com
+  frontendUrl: http://photoapp.example.com
+  nodeEnv: production
+  # SSO (optional)
+  google:
+    clientId: ""
+    clientSecret: ""
+  oidc:
+    issuerUrl: ""
+    clientId: ""
+    clientSecret: ""
+
+## PostgreSQL (uses Bitnami subchart)
+postgresql:
+  enabled: true
+  auth:
+    username: photoapp
+    password: photoapp
+    database: photoapp
+  primary:
+    persistence:
+      enabled: true
+      size: 20Gi
+  image:
+    repository: pgvector/pgvector
+    tag: pg16
+
+## Redis (uses Bitnami subchart)
+redis:
+  enabled: true
+  auth:
+    enabled: false
+  master:
+    persistence:
+      enabled: true
+      size: 2Gi
+
+## Persistent storage
+persistence:
+  uploads:
+    enabled: true
+    size: 100Gi
+    storageClass: ""
+    accessMode: ReadWriteOnce
+  thumbnails:
+    enabled: true
+    size: 20Gi
+    storageClass: ""
+    accessMode: ReadWriteOnce
+  mlModels:
+    enabled: true
+    size: 10Gi
+    storageClass: ""
+    accessMode: ReadWriteOnce
+
+## Prometheus metrics
+metrics:
+  enabled: true
+  serviceMonitor:
+    enabled: false  # requires Prometheus Operator
+
+## Grafana (optional sidecar deployment)
+grafana:
+  enabled: false
+  adminPassword: admin
+
+resources:
+  api:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+  web:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+  ml:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: "2"
+      memory: 4Gi

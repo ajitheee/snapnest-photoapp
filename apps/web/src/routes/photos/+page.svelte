@@ -3,8 +3,8 @@
   import { goto } from '$app/navigation';
   import { api } from '$lib/api';
   import { isAuthenticated } from '$lib/stores';
-  import type { Asset } from '$lib/api';
-  import Hls from 'hls.js';
+  import type { Asset, MemoryYearGroup, MemoryAsset } from '$lib/api';
+  import PhotoViewer from '$lib/PhotoViewer.svelte';
 
   let assets: Asset[] = [];
   let loading = true;
@@ -14,66 +14,29 @@
   const limit = 50;
   $: totalPages = Math.ceil(total / limit);
 
-  // Viewer state
-  let viewerAsset: Asset | null = null;
   let viewerIndex = -1;
 
-  // Zoom state
-  let zoomScale = 1;
-  let panX = 0;
-  let panY = 0;
-  let isPanning = false;
-  let panStartX = 0;
-  let panStartY = 0;
-  // Pinch state
-  let lastPinchDist = 0;
+  // Memories
+  let yearGroups: MemoryYearGroup[] = [];
+  let memoriesLoading = true;
+  let memoriesExpanded = true;
+  let memViewerAssets: MemoryAsset[] = [];
+  let memViewerIndex = -1;
 
-  function resetZoom() { zoomScale = 1; panX = 0; panY = 0; }
-
-  function onWheel(e: WheelEvent) {
-    e.preventDefault();
-    const delta = e.deltaY > 0 ? 0.85 : 1.18;
-    zoomScale = Math.min(10, Math.max(1, zoomScale * delta));
-    if (zoomScale === 1) { panX = 0; panY = 0; }
-  }
-
-  function onPanStart(e: MouseEvent) {
-    if (zoomScale <= 1) return;
-    isPanning = true;
-    panStartX = e.clientX - panX;
-    panStartY = e.clientY - panY;
-  }
-  function onPanMove(e: MouseEvent) {
-    if (!isPanning) return;
-    panX = e.clientX - panStartX;
-    panY = e.clientY - panStartY;
-  }
-  function onPanEnd() { isPanning = false; }
-
-  function onTouchStart(e: TouchEvent) {
-    if (e.touches.length === 2) {
-      const dx = e.touches[0].clientX - e.touches[1].clientX;
-      const dy = e.touches[0].clientY - e.touches[1].clientY;
-      lastPinchDist = Math.hypot(dx, dy);
-    }
-  }
-  function onTouchMove(e: TouchEvent) {
-    if (e.touches.length === 2) {
-      e.preventDefault();
-      const dx = e.touches[0].clientX - e.touches[1].clientX;
-      const dy = e.touches[0].clientY - e.touches[1].clientY;
-      const dist = Math.hypot(dx, dy);
-      if (lastPinchDist > 0) {
-        zoomScale = Math.min(10, Math.max(1, zoomScale * (dist / lastPinchDist)));
-        if (zoomScale === 1) { panX = 0; panY = 0; }
-      }
-      lastPinchDist = dist;
-    }
-  }
+  // Multi-select
+  let selectMode = false;
+  let selected = new Set<string>();
+  let downloading = false;
+  let deleting = false;
 
   onMount(async () => {
     if (!$isAuthenticated) { goto('/'); return; }
-    await loadAssets();
+    const [assetsResult, memoriesResult] = await Promise.allSettled([
+      loadAssets(),
+      api.memories.get(),
+    ]);
+    if (memoriesResult.status === 'fulfilled') yearGroups = memoriesResult.value.yearGroups;
+    memoriesLoading = false;
   });
 
   async function loadAssets() {
@@ -86,43 +49,62 @@
     } finally { loading = false; }
   }
 
-  async function toggleFavorite(asset: Asset) {
-    const updated = await api.assets.toggleFavorite(asset.id);
-    assets = assets.map(a => a.id === asset.id ? updated : a);
-    if (viewerAsset?.id === asset.id) viewerAsset = updated;
-  }
-
-  async function archiveAsset(asset: Asset) {
-    await api.assets.toggleArchive(asset.id);
-    assets = assets.filter(a => a.id !== asset.id); total--;
-    closeViewer();
-  }
-
-  async function trashAsset(asset: Asset) {
-    await api.assets.softDelete(asset.id);
-    assets = assets.filter(a => a.id !== asset.id); total--;
-    closeViewer();
-  }
-
-  function openViewer(asset: Asset) {
-    viewerAsset = asset;
-    viewerIndex = assets.findIndex(a => a.id === asset.id);
-  }
-  function closeViewer() { viewerAsset = null; viewerIndex = -1; resetZoom(); }
-  function viewerPrev() {
-    if (viewerIndex > 0) { viewerIndex--; viewerAsset = assets[viewerIndex]; resetZoom(); }
-  }
-  function viewerNext() {
-    if (viewerIndex < assets.length - 1) { viewerIndex++; viewerAsset = assets[viewerIndex]; resetZoom(); }
-  }
-  function onViewerKey(e: KeyboardEvent) {
-    if (e.key === 'Escape') closeViewer();
-    else if (e.key === 'ArrowLeft' && zoomScale === 1) viewerPrev();
-    else if (e.key === 'ArrowRight' && zoomScale === 1) viewerNext();
+  function openMemory(group: MemoryYearGroup, idx: number) {
+    memViewerAssets = group.assets as MemoryAsset[];
+    memViewerIndex = idx;
   }
 
   async function prevPage() { if (page > 1) { page--; await loadAssets(); } }
   async function nextPage() { if (page < totalPages) { page++; await loadAssets(); } }
+
+  function handleAssetUpdated(e: CustomEvent<Asset>) {
+    assets = assets.map(a => a.id === e.detail.id ? e.detail : a);
+  }
+
+  function handleAssetRemoved(e: CustomEvent<string>) {
+    assets = assets.filter(a => a.id !== e.detail);
+    total--;
+  }
+
+  function toggleSelectMode() {
+    selectMode = !selectMode;
+    if (!selectMode) selected = new Set();
+  }
+
+  function toggleSelect(id: string) {
+    if (selected.has(id)) { selected.delete(id); } else { selected.add(id); }
+    selected = selected;
+  }
+
+  function selectAll() {
+    selected = new Set(assets.map(a => a.id));
+  }
+
+  async function downloadSelected() {
+    if (!selected.size) return;
+    downloading = true;
+    try { await api.assets.downloadZip([...selected]); }
+    catch (e) { alert('Download failed'); }
+    finally { downloading = false; }
+  }
+
+  async function deleteSelected() {
+    if (!selected.size) return;
+    if (!confirm(`Move ${selected.size} item${selected.size !== 1 ? 's' : ''} to trash?`)) return;
+    deleting = true;
+    try {
+      await Promise.all([...selected].map(id => api.assets.softDelete(id)));
+      assets = assets.filter(a => !selected.has(a.id));
+      total -= selected.size;
+      selected = new Set();
+    } catch (e) { alert('Delete failed'); }
+    finally { deleting = false; }
+  }
+
+  function onTileClick(asset: Asset, i: number) {
+    if (selectMode) { toggleSelect(asset.id); }
+    else { viewerIndex = i; }
+  }
 
   function imgError(e: Event) {
     const el = e.currentTarget as HTMLImageElement;
@@ -137,104 +119,288 @@
     const n = parseInt(b, 10);
     return n < 1048576 ? `${(n/1024).toFixed(1)} KB` : `${(n/1048576).toFixed(1)} MB`;
   }
-  function fullUrl(asset: Asset) {
-    const token = typeof localStorage !== 'undefined' ? localStorage.getItem('photoapp_token') : null;
-    const qs = token ? `?token=${encodeURIComponent(token)}&size=large` : '?size=large';
-    return `/api/assets/${asset.id}/thumbnail${qs}`;
-  }
-
-  function hlsUrl(asset: Asset) {
-    const token = typeof localStorage !== 'undefined' ? localStorage.getItem('photoapp_token') : null;
-    const qs = token ? `?token=${encodeURIComponent(token)}` : '';
-    return `/api/assets/${asset.id}/stream/master.m3u8${qs}`;
-  }
-
-  function hlsPlayer(node: HTMLVideoElement, src: string) {
-    let hls: Hls | null = null;
-    function init(s: string) {
-      if (hls) { hls.destroy(); hls = null; }
-      if (Hls.isSupported()) {
-        hls = new Hls();
-        hls.loadSource(s);
-        hls.attachMedia(node);
-      } else if (node.canPlayType('application/vnd.apple.mpegurl')) {
-        node.src = s; // Safari native HLS
-      }
-    }
-    init(src);
-    return {
-      update(s: string) { init(s); },
-      destroy() { if (hls) { hls.destroy(); hls = null; } },
-    };
-  }
 </script>
 
-<svelte:window on:keydown={onViewerKey} />
-
 <style>
-  .page { padding: 1.5rem; max-width: 1600px; margin: 0 auto; }
-  .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.5rem; }
-  h2 { font-size: 1.5rem; font-weight: 700; }
-  .count { color: #666; font-size: 0.9rem; }
-  .upload-btn { padding: 0.5rem 1rem; background: #4f8ef7; border: none; border-radius: 8px; color: #fff; font-size: 0.9rem; font-weight: 600; }
-  .upload-btn:hover { background: #3a7de8; }
-  .loading, .error-msg, .empty { text-align: center; padding: 4rem 2rem; color: #666; }
-  .error-msg { color: #f87171; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 4px; }
-  .asset-tile { aspect-ratio: 1; overflow: hidden; border-radius: 4px; background: #1a1a1a; position: relative; cursor: pointer; }
-  .asset-tile:hover .overlay { opacity: 1; }
-  .asset-tile img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.2s; }
-  .asset-tile:hover img { transform: scale(1.03); }
-  .video-badge { position: absolute; top: 0.4rem; right: 0.4rem; background: rgba(0,0,0,0.7); border-radius: 4px; padding: 2px 6px; font-size: 0.7rem; color: #fff; }
-  .overlay { position: absolute; inset: 0; background: linear-gradient(to top, rgba(0,0,0,0.7) 0%, transparent 50%); opacity: 0; transition: opacity 0.2s; display: flex; flex-direction: column; justify-content: space-between; padding: 0.4rem; }
-  .tile-actions { display: flex; gap: 0.3rem; justify-content: flex-end; }
-  .tile-btn { background: rgba(0,0,0,0.6); border: none; border-radius: 4px; color: #fff; padding: 3px 7px; font-size: 0.8rem; cursor: pointer; line-height: 1; }
-  .tile-btn:hover { background: rgba(0,0,0,0.85); }
-  .tile-btn.fav-active { color: #f472b6; }
-  .overlay-info { font-size: 0.75rem; color: #fff; line-height: 1.3; }
-  .overlay-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .overlay-size { color: #ccc; }
-  .broken { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 2rem; color: #333; }
-  .pagination { display: flex; align-items: center; justify-content: center; gap: 1rem; margin-top: 2rem; }
-  .page-btn { padding: 0.4rem 0.8rem; background: #1a1a1a; border: 1px solid #333; border-radius: 6px; color: #aaa; font-size: 0.9rem; }
-  .page-btn:hover:not(:disabled) { border-color: #555; color: #fff; }
-  .page-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-  .page-info { color: #666; font-size: 0.9rem; }
+  .page { padding: 1.75rem 2rem; max-width: 1600px; margin: 0 auto; }
 
-  /* Viewer / lightbox */
-  .viewer-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.92); z-index: 200; display: flex; align-items: center; justify-content: center; overflow: hidden; }
-  .viewer-img-wrap { max-width: calc(100vw - 8rem); max-height: calc(100vh - 6rem); position: relative; display: flex; align-items: center; justify-content: center; transform-origin: center center; will-change: transform; }
-  .viewer-img-wrap.zoomed { cursor: grab; }
-  .viewer-img-wrap.zoomed:active { cursor: grabbing; }
-  .viewer-img { max-width: 100%; max-height: calc(100vh - 6rem); border-radius: 4px; display: block; object-fit: contain; user-select: none; -webkit-user-drag: none; }
-  .viewer-video { max-width: calc(100vw - 8rem); max-height: calc(100vh - 6rem); border-radius: 4px; display: block; outline: none; }
-  .viewer-broken { font-size: 5rem; color: #333; }
-  .viewer-close { position: fixed; top: 1rem; right: 1rem; background: rgba(0,0,0,0.6); border: none; border-radius: 50%; color: #fff; width: 2.5rem; height: 2.5rem; font-size: 1.2rem; cursor: pointer; display: flex; align-items: center; justify-content: center; z-index: 201; }
-  .viewer-close:hover { background: rgba(255,255,255,0.15); }
-  .viewer-nav { position: fixed; top: 50%; transform: translateY(-50%); background: rgba(0,0,0,0.5); border: none; border-radius: 50%; color: #fff; width: 3rem; height: 3rem; font-size: 1.3rem; cursor: pointer; display: flex; align-items: center; justify-content: center; z-index: 201; }
-  .viewer-nav:hover:not(:disabled) { background: rgba(255,255,255,0.15); }
-  .viewer-nav:disabled { opacity: 0.2; cursor: default; }
-  .viewer-prev { left: 1rem; }
-  .viewer-next { right: 1rem; }
-  .viewer-meta { position: fixed; bottom: 0; left: 0; right: 0; padding: 1rem 1.5rem; background: linear-gradient(to top, rgba(0,0,0,0.8), transparent); display: flex; align-items: flex-end; justify-content: space-between; z-index: 201; }
-  .viewer-info { font-size: 0.9rem; color: #fff; }
-  .viewer-fname { font-weight: 700; margin-bottom: 2px; }
-  .viewer-sub { color: #aaa; font-size: 0.8rem; }
-  .viewer-actions { display: flex; gap: 0.5rem; }
-  .vbtn { padding: 0.4rem 0.8rem; border-radius: 6px; border: 1px solid #444; background: rgba(0,0,0,0.5); color: #fff; font-size: 0.85rem; cursor: pointer; }
-  .vbtn:hover { background: rgba(255,255,255,0.1); }
-  .vbtn.fav-active { color: #f472b6; border-color: #f472b6; }
-  .vbtn.danger:hover { border-color: #f87171; color: #f87171; }
+  /* Header */
+  .header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 1.25rem; flex-wrap: wrap; gap: 0.75rem;
+  }
+  .header-left { display: flex; align-items: baseline; gap: 0.75rem; }
+  h2 { font-size: 1.6rem; font-weight: 800; letter-spacing: -0.03em; }
+  .count {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    font-size: 0.78rem;
+    font-weight: 600;
+    padding: 0.2rem 0.65rem;
+    border-radius: 20px;
+  }
+  .header-actions { display: flex; gap: 0.5rem; align-items: center; }
+
+  .upload-btn {
+    padding: 0.5rem 1.1rem;
+    background: linear-gradient(135deg, var(--accent) 0%, #8b5cf6 100%);
+    border: none; border-radius: 10px; color: #fff;
+    font-size: 0.875rem; font-weight: 600;
+    box-shadow: 0 2px 8px var(--accent-glow);
+    transition: opacity 0.15s, transform 0.15s, box-shadow 0.15s;
+    font-family: inherit;
+  }
+  .upload-btn:hover {
+    opacity: 0.9;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 14px var(--accent-glow);
+  }
+
+  .select-btn {
+    padding: 0.5rem 1rem;
+    background: var(--surface);
+    border: 1.5px solid var(--border);
+    border-radius: 10px; color: var(--text-muted);
+    font-size: 0.875rem; font-weight: 600;
+    transition: all 0.15s;
+    font-family: inherit;
+  }
+  .select-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .select-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+  /* Selection toolbar */
+  .select-toolbar {
+    display: flex; align-items: center; gap: 0.75rem;
+    padding: 0.65rem 1rem;
+    background: var(--accent-light);
+    border: 1.5px solid var(--accent);
+    border-radius: 12px; margin-bottom: 1.25rem; flex-wrap: wrap;
+  }
+  .sel-count { font-size: 0.875rem; font-weight: 700; color: var(--accent); }
+  .tb-btn {
+    padding: 0.38rem 0.75rem; border-radius: 8px;
+    border: 1px solid var(--border); background: var(--surface);
+    color: var(--text-muted); font-size: 0.82rem; font-weight: 500;
+    transition: all 0.15s; font-family: inherit;
+  }
+  .tb-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .tb-btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .tb-btn.primary:hover { background: var(--accent-hover); }
+  .tb-btn.danger { border-color: var(--error); color: var(--error); }
+  .tb-btn.danger:hover { background: var(--error); color: #fff; }
+  .tb-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* States */
+  .loading, .error-msg, .empty {
+    text-align: center; padding: 5rem 2rem; color: var(--text-muted);
+    font-size: 0.95rem;
+  }
+  .loading::before { content: ''; display: block; margin: 0 auto 1rem; }
+  .error-msg { color: var(--error); }
+  .empty-icon { font-size: 3.5rem; margin-bottom: 1rem; display: block; opacity: 0.5; }
+
+  /* Grid */
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(195px, 1fr));
+    gap: 6px;
+  }
+
+  .asset-tile {
+    aspect-ratio: 1; overflow: hidden; border-radius: 8px;
+    background: var(--surface-2); position: relative; cursor: pointer;
+    transition: transform 0.2s, box-shadow 0.2s;
+  }
+  .asset-tile:hover { transform: scale(1.015); box-shadow: var(--shadow-lg); z-index: 1; }
+  .asset-tile:hover .overlay { opacity: 1; }
+  .asset-tile img {
+    width: 100%; height: 100%; object-fit: cover; display: block;
+    transition: transform 0.25s;
+  }
+  .asset-tile:hover img { transform: scale(1.04); }
+  .asset-tile.selected { outline: 3px solid var(--accent); outline-offset: 0; }
+  .asset-tile.selected img { transform: scale(1.03); }
+
+  .video-badge {
+    position: absolute; top: 0.45rem; right: 0.45rem;
+    background: rgba(0,0,0,0.75); backdrop-filter: blur(4px);
+    border-radius: 6px; padding: 2px 7px;
+    font-size: 0.68rem; font-weight: 700; color: #fff; letter-spacing: 0.05em;
+  }
+
+  .check-badge {
+    position: absolute; top: 0.45rem; left: 0.45rem;
+    width: 22px; height: 22px; border-radius: 50%;
+    border: 2px solid rgba(255,255,255,0.9);
+    background: rgba(0,0,0,0.35); backdrop-filter: blur(4px);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.7rem; color: #fff;
+    transition: all 0.15s;
+  }
+  .check-badge.checked { background: var(--accent); border-color: var(--accent); }
+
+  .overlay {
+    position: absolute; inset: 0;
+    background: linear-gradient(to top, rgba(0,0,0,0.75) 0%, rgba(0,0,0,0.1) 50%, transparent 100%);
+    opacity: 0; transition: opacity 0.25s;
+    display: flex; flex-direction: column; justify-content: flex-end;
+    padding: 0.6rem; pointer-events: none;
+  }
+  .overlay-info { font-size: 0.73rem; color: #fff; line-height: 1.35; }
+  .overlay-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .overlay-size { color: rgba(255,255,255,0.75); margin-top: 0.1rem; }
+
+  .broken {
+    width: 100%; height: 100%; display: flex; align-items: center;
+    justify-content: center; font-size: 2rem; color: var(--border-2);
+  }
+
+  /* Pagination */
+  .pagination {
+    display: flex; align-items: center; justify-content: center;
+    gap: 0.75rem; margin-top: 2.5rem; padding-bottom: 1rem;
+  }
+  .page-btn {
+    padding: 0.5rem 1.1rem; background: var(--surface);
+    border: 1.5px solid var(--border); border-radius: 10px;
+    color: var(--text-muted); font-size: 0.875rem; font-weight: 500;
+    transition: all 0.15s; font-family: inherit;
+  }
+  .page-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+  .page-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+  .page-info {
+    color: var(--text-muted); font-size: 0.875rem; font-weight: 500;
+    background: var(--surface-2); border: 1px solid var(--border);
+    padding: 0.4rem 0.9rem; border-radius: 8px;
+  }
+
+  /* ── Memories strip ── */
+  .memories-section {
+    margin-bottom: 2rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 1.1rem 1.25rem;
+    box-shadow: var(--shadow-xs);
+  }
+  .memories-header {
+    display: flex; align-items: center; gap: 0.6rem;
+    margin-bottom: 0.9rem; cursor: pointer; user-select: none;
+  }
+  .memories-title { font-size: 0.95rem; font-weight: 700; color: var(--text); }
+  .mem-badge {
+    background: linear-gradient(135deg, var(--accent), #8b5cf6);
+    color: #fff; font-size: 0.65rem; font-weight: 700;
+    padding: 0.15rem 0.5rem; border-radius: 20px;
+  }
+  .memories-subtitle { font-size: 0.8rem; color: var(--text-muted); }
+  .memories-toggle {
+    font-size: 0.73rem; font-weight: 500;
+    color: var(--accent); margin-left: auto;
+    background: var(--accent-light); padding: 0.2rem 0.55rem;
+    border-radius: 6px;
+  }
+  .memory-group { margin-bottom: 1.1rem; }
+  .memory-year-label {
+    font-size: 0.82rem; font-weight: 700; color: var(--text); margin-bottom: 0.5rem;
+  }
+  .memory-year-sub {
+    font-size: 0.75rem; color: var(--text-muted); font-weight: 400; margin-left: 0.4rem;
+  }
+  .memory-strip {
+    display: flex; gap: 7px; overflow-x: auto; padding-bottom: 4px;
+    scrollbar-width: thin; scrollbar-color: var(--border) transparent;
+  }
+  .memory-strip::-webkit-scrollbar { height: 4px; }
+  .memory-strip::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+  .mem-thumb {
+    flex: 0 0 auto; width: 135px; height: 135px; border-radius: 12px;
+    overflow: hidden; background: var(--surface-2); cursor: pointer; position: relative;
+    transition: transform 0.2s, box-shadow 0.2s;
+  }
+  .mem-thumb:hover { transform: scale(1.04); box-shadow: var(--shadow-md); }
+  .mem-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.2s; }
+  .mem-thumb:hover img { transform: scale(1.06); }
+  .mem-placeholder {
+    width: 100%; height: 100%; display: flex; align-items: center;
+    justify-content: center; font-size: 2rem; color: var(--text-muted);
+  }
+  .mem-more {
+    flex: 0 0 auto; width: 135px; height: 135px; border-radius: 12px;
+    background: var(--surface-2); border: 1.5px dashed var(--border-2);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.82rem; font-weight: 600; color: var(--text-muted);
+  }
 </style>
 
 <div class="page">
   <div class="header">
-    <div>
+    <div class="header-left">
       <h2>Photos</h2>
       {#if !loading && total > 0}<span class="count">{total.toLocaleString()} items</span>{/if}
     </div>
-    <a href="/upload"><button class="upload-btn">+ Upload</button></a>
+    <div class="header-actions">
+      <button class="select-btn" class:active={selectMode} on:click={toggleSelectMode}>
+        {selectMode ? 'Cancel' : 'Select'}
+      </button>
+      <a href="/upload"><button class="upload-btn">+ Upload</button></a>
+    </div>
   </div>
+
+  {#if selectMode && assets.length > 0}
+    <div class="select-toolbar">
+      <span class="sel-count">{selected.size} selected</span>
+      <button class="tb-btn" on:click={selectAll}>Select All</button>
+      <button class="tb-btn" on:click={() => selected = new Set()}>Clear</button>
+      <button class="tb-btn primary" on:click={downloadSelected} disabled={selected.size === 0 || downloading}>
+        {downloading ? 'Downloading…' : `⬇ Download (${selected.size})`}
+      </button>
+      <button class="tb-btn danger" on:click={deleteSelected} disabled={selected.size === 0 || deleting}>
+        {deleting ? 'Moving to trash…' : `🗑 Delete (${selected.size})`}
+      </button>
+    </div>
+  {/if}
+
+  {#if !memoriesLoading && yearGroups.length > 0}
+    <div class="memories-section">
+      <!-- svelte-ignore a11y-click-events-have-key-events -->
+      <!-- svelte-ignore a11y-no-static-element-interactions -->
+      <div class="memories-header" on:click={() => memoriesExpanded = !memoriesExpanded}>
+        <span class="memories-title">Memories</span>
+        <span class="mem-badge">✦ Today</span>
+        <span class="memories-subtitle">On this day in past years</span>
+        <span class="memories-toggle">{memoriesExpanded ? '▲ Hide' : '▼ Show'}</span>
+      </div>
+      {#if memoriesExpanded}
+        {#each yearGroups as group}
+          <div class="memory-group">
+            <div class="memory-year-label">
+              {group.label}
+              <span class="memory-year-sub">{group.year} · {group.count} photo{group.count !== 1 ? 's' : ''}</span>
+            </div>
+            <div class="memory-strip">
+              {#each group.assets as asset, i}
+                <!-- svelte-ignore a11y-click-events-have-key-events -->
+                <div class="mem-thumb" on:click={() => openMemory(group, i)}
+                  role="button" tabindex="0"
+                  on:keydown={(e) => e.key === 'Enter' && openMemory(group, i)}>
+                  {#if asset.thumbnailSmallPath}
+                    <img src={api.assets.thumbnailUrl(asset.id)} alt={asset.fileName} loading="lazy" />
+                  {:else}
+                    <div class="mem-placeholder">🖼</div>
+                  {/if}
+                </div>
+              {/each}
+              {#if group.count > group.assets.length}
+                <div class="mem-more">+{group.count - group.assets.length} more</div>
+              {/if}
+            </div>
+          </div>
+        {/each}
+      {/if}
+    </div>
+  {/if}
 
   {#if loading}
     <div class="loading">Loading your photos...</div>
@@ -242,14 +408,16 @@
     <div class="error-msg">{error}</div>
   {:else if assets.length === 0}
     <div class="empty">
-      <p>No photos yet.</p>
-      <p style="margin-top:0.5rem;font-size:0.9rem"><a href="/upload" style="color:#4f8ef7">Upload your first photo</a> to get started.</p>
+      <span class="empty-icon">🖼️</span>
+      <p style="font-weight:600;font-size:1rem;color:var(--text-2)">No photos yet</p>
+      <p style="margin-top:0.5rem;font-size:0.875rem"><a href="/upload" style="color:var(--accent);font-weight:600">Upload your first photo</a> to get started.</p>
     </div>
   {:else}
     <div class="grid">
-      {#each assets as asset (asset.id)}
-        <div class="asset-tile" on:click={() => openViewer(asset)} role="button" tabindex="0"
-          on:keydown={(e) => e.key === 'Enter' && openViewer(asset)}>
+      {#each assets as asset, i (asset.id)}
+        <div class="asset-tile" class:selected={selected.has(asset.id)}
+          on:click={() => onTileClick(asset, i)} role="button" tabindex="0"
+          on:keydown={(e) => e.key === 'Enter' && onTileClick(asset, i)}>
           {#if asset.type !== 'OTHER'}
             <img src={api.assets.thumbnailUrl(asset.id)} alt={asset.fileName} loading="lazy"
               on:error={(e) => imgError(e)} />
@@ -257,14 +425,13 @@
           {:else}
             <div class="broken">&#128196;</div>
           {/if}
+          {#if selectMode}
+            <div class="check-badge" class:checked={selected.has(asset.id)}>
+              {#if selected.has(asset.id)}&#10003;{/if}
+            </div>
+          {/if}
           {#if asset.type === 'VIDEO'}<span class="video-badge">VIDEO</span>{/if}
           <div class="overlay">
-            <div class="tile-actions">
-              <button class="tile-btn" class:fav-active={asset.isFavorite} title={asset.isFavorite ? 'Unfavorite' : 'Favorite'}
-                on:click|stopPropagation={() => toggleFavorite(asset)}>&#9829;</button>
-              <button class="tile-btn" title="Archive" on:click|stopPropagation={() => archiveAsset(asset)}>&#8964;</button>
-              <button class="tile-btn" title="Trash" on:click|stopPropagation={() => trashAsset(asset)}>&#128465;</button>
-            </div>
             <div class="overlay-info">
               <div class="overlay-name">{asset.fileName}</div>
               <div class="overlay-size">{formatSize(asset.fileSizeBytes)} &middot; {formatDate(asset.fileCreatedAt)}</div>
@@ -283,42 +450,16 @@
   {/if}
 </div>
 
-{#if viewerAsset}
-  <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-  <div class="viewer-backdrop" on:click|self={closeViewer} on:wheel|passive={false}
-    on:wheel={onWheel} on:mousemove={onPanMove} on:mouseup={onPanEnd} on:mouseleave={onPanEnd}
-    on:touchstart={onTouchStart} on:touchmove|passive={false} on:touchmove={onTouchMove}
-    role="dialog" aria-modal="true">
-    <button class="viewer-close" on:click={closeViewer}>✕</button>
-    <button class="viewer-nav viewer-prev" on:click={viewerPrev} disabled={viewerIndex <= 0}>&#8592;</button>
-    <div class="viewer-img-wrap" class:zoomed={zoomScale > 1}
-      style="transform: scale({zoomScale}) translate({panX / zoomScale}px, {panY / zoomScale}px)"
-      on:mousedown={onPanStart}>
-      {#if viewerAsset.type === 'VIDEO'}
-        <!-- svelte-ignore a11y-media-has-caption -->
-        <video class="viewer-video" controls autoplay
-          use:hlsPlayer={hlsUrl(viewerAsset)}
-          on:click|stopPropagation></video>
-      {:else if viewerAsset.type === 'IMAGE'}
-        <img class="viewer-img" src={fullUrl(viewerAsset)} alt={viewerAsset.fileName} draggable="false" />
-      {:else}
-        <div class="viewer-broken">&#128196;</div>
-      {/if}
-    </div>
-    <button class="viewer-nav viewer-next" on:click={viewerNext} disabled={viewerIndex >= assets.length - 1}>&#8594;</button>
-    <div class="viewer-meta">
-      <div class="viewer-info">
-        <div class="viewer-fname">{viewerAsset.fileName}</div>
-        <div class="viewer-sub">{formatSize(viewerAsset.fileSizeBytes)} &middot; {formatDate(viewerAsset.fileCreatedAt)}</div>
-      </div>
-      <div class="viewer-actions">
-        <button class="vbtn" class:fav-active={viewerAsset.isFavorite}
-          on:click={() => viewerAsset && toggleFavorite(viewerAsset)}>
-          &#9829; {viewerAsset.isFavorite ? 'Unfavorite' : 'Favorite'}
-        </button>
-        <button class="vbtn" on:click={() => viewerAsset && archiveAsset(viewerAsset)}>Archive</button>
-        <button class="vbtn danger" on:click={() => viewerAsset && trashAsset(viewerAsset)}>Trash</button>
-      </div>
-    </div>
-  </div>
-{/if}
+<PhotoViewer
+  bind:viewerIndex
+  {assets}
+  mode="default"
+  on:assetUpdated={handleAssetUpdated}
+  on:assetRemoved={handleAssetRemoved}
+/>
+
+<PhotoViewer
+  bind:viewerIndex={memViewerIndex}
+  assets={memViewerAssets}
+  mode="default"
+/>

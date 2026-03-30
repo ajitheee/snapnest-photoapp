@@ -29,7 +29,8 @@ export class AuthController {
   @Get('me')
   @UseGuards(JwtAuthGuard)
   async me(@Request() req: { user: User }) {
-    const { passwordHash: _, ...user } = req.user;
+    const { passwordHash: _, ...user } = req.user as any;
     return user;
   }
+
 }

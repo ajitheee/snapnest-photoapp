@@ -6,6 +6,7 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { UsersService } from '../users/users.service';
+import { PrismaService } from '../prisma/prisma.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { User } from '@prisma/client';
@@ -17,6 +18,7 @@ export class AuthService {
   constructor(
     private readonly usersService: UsersService,
     private readonly jwtService: JwtService,
+    private readonly prisma: PrismaService,
   ) {}
 
   async register(dto: RegisterDto): Promise<{ accessToken: string; user: Omit<User, 'passwordHash'> }> {
@@ -43,6 +45,9 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
+    if (!user.passwordHash) {
+      throw new UnauthorizedException('This account uses SSO login');
+    }
     const passwordValid = await bcrypt.compare(dto.password, user.passwordHash);
     if (!passwordValid) {
       throw new UnauthorizedException('Invalid credentials');
@@ -51,6 +56,64 @@ export class AuthService {
     const accessToken = this.signToken(user);
     const { passwordHash: _, ...userWithoutPassword } = user;
     return { accessToken, user: userWithoutPassword };
+  }
+
+  async findOrCreateOAuthUser(profile: {
+    provider: string;
+    providerAccountId: string;
+    email: string;
+    name: string;
+    accessToken?: string;
+    refreshToken?: string;
+  }): Promise<User> {
+    // Check if this OAuth identity already exists
+    const existing = await this.prisma.oauthIdentity.findUnique({
+      where: {
+        provider_providerAccountId: {
+          provider: profile.provider,
+          providerAccountId: profile.providerAccountId,
+        },
+      },
+      include: { user: true },
+    });
+
+    if (existing) {
+      // Update tokens
+      await this.prisma.oauthIdentity.update({
+        where: { id: existing.id },
+        data: {
+          accessToken: profile.accessToken,
+          refreshToken: profile.refreshToken,
+        },
+      });
+      return existing.user;
+    }
+
+    // Try to find user by email and link, or create new user
+    let user = await this.usersService.findByEmail(profile.email);
+    if (!user) {
+      user = await this.usersService.create({
+        email: profile.email,
+        passwordHash: null,
+        name: profile.name,
+      });
+    }
+
+    await this.prisma.oauthIdentity.create({
+      data: {
+        userId: user.id,
+        provider: profile.provider,
+        providerAccountId: profile.providerAccountId,
+        accessToken: profile.accessToken,
+        refreshToken: profile.refreshToken,
+      },
+    });
+
+    return user;
+  }
+
+  issueToken(user: User): string {
+    return this.signToken(user);
   }
 
   private signToken(user: User): string {

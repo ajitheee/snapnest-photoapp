@@ -5,6 +5,7 @@
   import { api } from '$lib/api';
   import { isAuthenticated } from '$lib/stores';
   import type { Album, Asset } from '$lib/api';
+  import PhotoViewer from '$lib/PhotoViewer.svelte';
 
   $: albumId = $pageStore.params.id;
 
@@ -15,6 +16,11 @@
   let allAssets: Asset[] = [];
   let selectedIds = new Set<string>();
   let adding = false;
+  let downloading = false;
+
+  // Flat asset list extracted from album for the viewer
+  $: viewerAssets = (album?.assets || []).map(aa => aa.asset);
+  let viewerIndex = -1;
 
   onMount(async () => {
     if (!$isAuthenticated) { goto('/'); return; }
@@ -30,9 +36,16 @@
 
   async function openAddPhotos() {
     showAddPhotos = true; selectedIds = new Set();
-    const r = await api.assets.list(1, 200);
     const albumAssetIds = new Set((album?.assets || []).map(aa => aa.asset.id));
-    allAssets = r.assets.filter(a => !albumAssetIds.has(a.id));
+    const fetched: Asset[] = [];
+    let p = 1;
+    while (true) {
+      const r = await api.assets.list(p, 500);
+      fetched.push(...r.assets);
+      if (fetched.length >= r.total) break;
+      p++;
+    }
+    allAssets = fetched.filter(a => !albumAssetIds.has(a.id));
   }
 
   async function confirmAdd() {
@@ -44,6 +57,14 @@
     } finally { adding = false; }
   }
 
+  async function downloadAlbum() {
+    if (!album) return;
+    downloading = true;
+    try { await api.albums.downloadZip(albumId, album.name); }
+    catch (e) { alert('Download failed'); }
+    finally { downloading = false; }
+  }
+
   async function removeAsset(assetId: string) {
     album = await api.albums.removeAssets(albumId, [assetId]);
   }
@@ -52,6 +73,27 @@
     album = await api.albums.update(albumId, { coverAssetId: assetId });
   }
 
+  // When viewer archives/trashes a photo, remove it from the album's local display
+  function handleViewerRemoved(e: CustomEvent<string>) {
+    if (!album?.assets) return;
+    album = { ...album, assets: album.assets.filter(aa => aa.asset.id !== e.detail) };
+    if (album._count) album = { ...album, _count: { assets: (album._count.assets ?? 1) - 1 } };
+  }
+
+  function handleViewerUpdated(e: CustomEvent<Asset>) {
+    if (!album?.assets) return;
+    album = {
+      ...album,
+      assets: album.assets.map(aa => aa.asset.id === e.detail.id ? { ...aa, asset: e.detail } : aa),
+    };
+  }
+
+  function imgError(e: Event) {
+    const el = e.currentTarget as HTMLImageElement;
+    el.style.display = 'none';
+    const next = el.nextElementSibling as HTMLElement;
+    if (next) next.style.removeProperty('display');
+  }
   function formatDate(d: string) {
     return new Date(d).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
   }
@@ -59,26 +101,23 @@
     const n = parseInt(b, 10);
     return n < 1048576 ? `${(n/1024).toFixed(1)} KB` : `${(n/1048576).toFixed(1)} MB`;
   }
-  function imgError(e: Event) {
-    const el = e.currentTarget as HTMLImageElement;
-    el.style.display = 'none';
-    const next = el.nextElementSibling as HTMLElement;
-    if (next) next.style.removeProperty('display');
-  }
 </script>
 
 <style>
   .page { padding: 1.5rem; max-width: 1600px; margin: 0 auto; }
   .header { display: flex; align-items: center; gap: 1rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
-  .back { color: #4f8ef7; text-decoration: none; font-size: 0.9rem; }
+  .back { color: var(--accent); text-decoration: none; font-size: 0.9rem; }
   h2 { font-size: 1.5rem; font-weight: 700; flex: 1; }
-  .count { color: #666; font-size: 0.9rem; }
-  .add-btn { padding: 0.5rem 1rem; background: #4f8ef7; border: none; border-radius: 8px; color: #fff; font-size: 0.9rem; font-weight: 600; }
-  .add-btn:hover { background: #3a7de8; }
-  .loading, .error-msg, .empty { text-align: center; padding: 4rem 2rem; color: #666; }
-  .error-msg { color: #f87171; }
+  .count { color: var(--text-muted); font-size: 0.9rem; }
+  .add-btn { padding: 0.5rem 1rem; background: var(--accent); border: none; border-radius: 8px; color: #fff; font-size: 0.9rem; font-weight: 600; }
+  .add-btn:hover { background: var(--accent-hover); }
+  .dl-btn { padding: 0.5rem 1rem; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; color: var(--text-muted); font-size: 0.9rem; font-weight: 600; }
+  .dl-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .dl-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .loading, .error-msg, .empty { text-align: center; padding: 4rem 2rem; color: var(--text-muted); }
+  .error-msg { color: var(--error); }
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 4px; }
-  .tile { aspect-ratio: 1; overflow: hidden; border-radius: 4px; background: #1a1a1a; position: relative; cursor: pointer; }
+  .tile { aspect-ratio: 1; overflow: hidden; border-radius: 4px; background: var(--surface-2); position: relative; cursor: pointer; }
   .tile img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.2s; }
   .tile:hover img { transform: scale(1.03); }
   .tile:hover .overlay { opacity: 1; }
@@ -90,19 +129,19 @@
   .info { font-size: 0.75rem; color: #fff; }
   .name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .meta { color: #ccc; }
-  .broken { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 2rem; color: #333; }
+  .broken { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 2rem; color: var(--border-2); }
   /* Add photos modal */
   .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 100; display: flex; align-items: center; justify-content: center; padding: 1rem; }
-  .modal { background: #111; border: 1px solid #333; border-radius: 12px; padding: 1.5rem; max-width: 900px; width: 100%; max-height: 80vh; display: flex; flex-direction: column; gap: 1rem; }
+  .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem; max-width: 900px; width: 100%; max-height: 80vh; display: flex; flex-direction: column; gap: 1rem; }
   .modal h3 { font-size: 1.1rem; font-weight: 700; }
   .modal-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 4px; overflow-y: auto; flex: 1; }
-  .select-tile { aspect-ratio: 1; border-radius: 4px; background: #1a1a1a; position: relative; cursor: pointer; overflow: hidden; }
-  .select-tile img { width: 100%; height: 100%; object-fit: cover; display: block; }
-  .select-tile.selected { outline: 3px solid #4f8ef7; }
-  .check { position: absolute; top: 4px; right: 4px; width: 20px; height: 20px; background: #4f8ef7; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; color: #fff; }
+  .select-tile { position: relative; padding-bottom: 100%; border-radius: 4px; background: var(--surface-2); cursor: pointer; overflow: hidden; }
+  .select-tile img { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+  .select-tile.selected { outline: 3px solid var(--accent); }
+  .check { position: absolute; top: 4px; right: 4px; width: 20px; height: 20px; background: var(--accent); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; color: #fff; }
   .modal-actions { display: flex; gap: 0.5rem; justify-content: flex-end; }
-  .btn-cancel { padding: 0.4rem 0.8rem; background: #222; border: 1px solid #444; border-radius: 6px; color: #aaa; font-size: 0.9rem; }
-  .btn-add { padding: 0.4rem 0.8rem; background: #4f8ef7; border: none; border-radius: 6px; color: #fff; font-size: 0.9rem; font-weight: 600; }
+  .btn-cancel { padding: 0.4rem 0.8rem; background: var(--surface-2); border: 1px solid var(--border-2); border-radius: 6px; color: var(--text-muted); font-size: 0.9rem; }
+  .btn-add { padding: 0.4rem 0.8rem; background: var(--accent); border: none; border-radius: 6px; color: #fff; font-size: 0.9rem; font-weight: 600; }
   .btn-add:disabled { opacity: 0.5; cursor: not-allowed; }
 </style>
 
@@ -113,6 +152,11 @@
       <h2>{album.name}</h2>
       <span class="count">{album._count?.assets ?? album.assets?.length ?? 0} photos</span>
       <button class="add-btn" on:click={openAddPhotos}>+ Add Photos</button>
+      {#if album.assets && album.assets.length > 0}
+        <button class="dl-btn" on:click={downloadAlbum} disabled={downloading}>
+          {downloading ? 'Downloading…' : '⬇ Download All'}
+        </button>
+      {/if}
     {/if}
   </div>
 
@@ -129,8 +173,9 @@
     </div>
   {:else}
     <div class="grid">
-      {#each album.assets as aa (aa.asset.id)}
-        <div class="tile">
+      {#each album.assets as aa, i (aa.asset.id)}
+        <div class="tile" on:click={() => viewerIndex = i} role="button" tabindex="0"
+          on:keydown={(e) => e.key === 'Enter' && (viewerIndex = i)}>
           {#if aa.asset.type !== 'OTHER'}
             <img src={api.assets.thumbnailUrl(aa.asset.id)} alt={aa.asset.fileName} loading="lazy"
               on:error={(e) => imgError(e)} />
@@ -165,9 +210,9 @@
             role="checkbox" aria-checked={selectedIds.has(asset.id)} tabindex="0"
             on:keydown={(e) => e.key === ' ' && e.currentTarget.click()}>
             {#if asset.type !== 'OTHER'}
-              <img src={api.assets.thumbnailUrl(asset.id)} alt={asset.fileName} loading="lazy" />
+              <img src={api.assets.thumbnailUrl(asset.id)} alt={asset.fileName} />
             {:else}
-              <div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:1.5rem;color:#333">&#128196;</div>
+              <div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:1.5rem;color:var(--border-2)">&#128196;</div>
             {/if}
             {#if selectedIds.has(asset.id)}<div class="check">&#10003;</div>{/if}
           </div>
@@ -182,3 +227,11 @@
     </div>
   </div>
 {/if}
+
+<PhotoViewer
+  bind:viewerIndex
+  assets={viewerAssets}
+  mode="default"
+  on:assetUpdated={handleViewerUpdated}
+  on:assetRemoved={handleViewerRemoved}
+/>

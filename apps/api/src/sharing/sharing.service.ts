@@ -100,12 +100,52 @@ export class SharingService {
       if (!valid) throw new UnauthorizedException('Incorrect password');
     }
 
-    await this.prisma.shareLink.update({
+    const updated = await this.prisma.shareLink.update({
       where: { id: link.id },
       data: { viewCount: { increment: 1 } },
+      select: { viewCount: true, updatedAt: true },
     });
 
     const { passwordHash, ...publicLink } = link as any;
-    return publicLink;
+    return { ...publicLink, viewCount: updated.viewCount, updatedAt: updated.updatedAt };
+  }
+
+  async getPublicFile(token: string, assetId: string, size: 'small' | 'large' | 'original'): Promise<{ filePath: string; mimeType: string }> {
+    const link = await this.prisma.shareLink.findUnique({
+      where: { token },
+      include: {
+        album: { include: { assets: { select: { assetId: true } } } },
+      },
+    });
+
+    if (!link) throw new NotFoundException('Share link not found');
+    if (link.expiresAt && link.expiresAt < new Date()) {
+      throw new NotFoundException('Share link has expired');
+    }
+
+    const allowed =
+      (link.assetId === assetId) ||
+      (link.album?.assets.some((aa: any) => aa.assetId === assetId) ?? false);
+
+    if (!allowed) throw new NotFoundException('Asset not part of this share');
+
+    const asset = await this.prisma.asset.findUnique({
+      where: { id: assetId },
+      select: { thumbnailSmallPath: true, thumbnailLargePath: true, originalPath: true, mimeType: true },
+    });
+    if (!asset) throw new NotFoundException('Asset not found');
+
+    if (size === 'large') {
+      const filePath = asset.thumbnailLargePath || asset.originalPath;
+      const mimeType = asset.thumbnailLargePath ? 'image/webp' : asset.mimeType;
+      return { filePath, mimeType };
+    }
+    if (size === 'original') {
+      return { filePath: asset.originalPath, mimeType: asset.mimeType };
+    }
+    // small (default)
+    const filePath = asset.thumbnailSmallPath || asset.originalPath;
+    const mimeType = asset.thumbnailSmallPath ? 'image/webp' : asset.mimeType;
+    return { filePath, mimeType };
   }
 }

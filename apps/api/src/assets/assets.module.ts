@@ -8,6 +8,7 @@ import { ThumbnailProcessor } from '../queue/thumbnail.processor';
 import { MetadataProcessor } from '../queue/metadata.processor';
 import { TranscodeProcessor } from '../queue/transcode.processor';
 import { MlJobsProcessor } from '../queue/ml-jobs.processor';
+import { MetricsModule } from '../metrics/metrics.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { MlJobsProcessor } from '../queue/ml-jobs.processor';
       { name: 'transcode' },
       { name: 'ml' },
     ),
+    MetricsModule,
   ],
   providers: [
     AssetsService,

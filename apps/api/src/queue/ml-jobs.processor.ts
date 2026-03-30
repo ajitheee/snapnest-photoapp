@@ -54,6 +54,33 @@ export class MlJobsProcessor extends WorkerHost {
     const res = await axios.post(`${ML_URL}/detect/faces`, { image_path: imagePath }, { timeout: 60000 });
     const faces: any[] = res.data.faces || [];
 
+    // Get asset ownerId
+    const asset = await this.prisma.asset.findUnique({ where: { id: assetId }, select: { ownerId: true } });
+    if (!asset) return;
+
+    // Save each face to the faces table
+    if (faces.length > 0) {
+      for (let i = 0; i < faces.length; i++) {
+        const face = faces[i];
+        await this.prisma.face.upsert({
+          where: { assetId_faceIndex: { assetId, faceIndex: i } },
+          create: {
+            assetId,
+            ownerId: asset.ownerId,
+            faceIndex: i,
+            bbox: face.bounding_box,
+            embedding: face.embedding,
+            confidence: face.confidence,
+          },
+          update: {
+            bbox: face.bounding_box,
+            embedding: face.embedding,
+            confidence: face.confidence,
+          },
+        });
+      }
+    }
+
     await this.prisma.assetJobStatus.update({
       where: { assetId },
       data: {

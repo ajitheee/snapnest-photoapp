@@ -1,0 +1,68 @@
+/* ── Fonts ── */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+/* ── Light theme (default) ── */
+:root {
+  --bg: #f5f5f7;
+  --sidebar: #ffffff;
+  --surface: #ffffff;
+  --surface-2: #f5f5f7;
+  --surface-hover: #f0f0f5;
+  --border: #e5e7eb;
+  --border-2: #d1d5db;
+  --text: #0f0f23;
+  --text-2: #374151;
+  --text-muted: #6b7280;
+  --text-subtle: #9ca3af;
+  --accent: #6366f1;
+  --accent-hover: #4f46e5;
+  --accent-light: #eef2ff;
+  --accent-glow: rgba(99, 102, 241, 0.15);
+  --active-bg: #eef2ff;
+  --error: #ef4444;
+  --error-bg: rgba(239, 68, 68, 0.07);
+  --error-border: rgba(239, 68, 68, 0.2);
+
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.08), 0 2px 4px -1px rgba(0, 0, 0, 0.05);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -2px rgba(0, 0, 0, 0.04);
+  --shadow-xl: 0 20px 40px -8px rgba(0, 0, 0, 0.12), 0 8px 16px -4px rgba(0, 0, 0, 0.06);
+  --shadow-2xl: 0 32px 64px -12px rgba(0, 0, 0, 0.18);
+}
+
+/* ── Dark theme ── */
+[data-theme="dark"] {
+  --bg: #0c0c14;
+  --sidebar: #12121e;
+  --surface: #17172a;
+  --surface-2: #1e1e30;
+  --surface-hover: #24243a;
+  --border: #2a2a40;
+  --border-2: #3a3a55;
+  --text: #f0f0ff;
+  --text-2: #d4d4e8;
+  --text-muted: #8888aa;
+  --text-subtle: #444466;
+  --accent: #818cf8;
+  --accent-hover: #6366f1;
+  --accent-light: #1a1a35;
+  --accent-glow: rgba(129, 140, 248, 0.2);
+  --active-bg: #1a1a35;
+  --error: #f87171;
+  --error-bg: rgba(239, 68, 68, 0.1);
+  --error-border: rgba(239, 68, 68, 0.3);
+
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.5), 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.5), 0 2px 4px -1px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 4px 6px -2px rgba(0, 0, 0, 0.4);
+  --shadow-xl: 0 20px 40px -8px rgba(0, 0, 0, 0.6), 0 8px 16px -4px rgba(0, 0, 0, 0.5);
+  --shadow-2xl: 0 32px 64px -12px rgba(0, 0, 0, 0.7);
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}

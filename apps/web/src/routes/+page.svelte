@@ -52,57 +52,137 @@
     justify-content: center;
     min-height: 100vh;
     padding: 2rem;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 60%, #f093fb 100%);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .container::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(ellipse at 15% 85%, rgba(120, 119, 198, 0.5) 0%, transparent 55%),
+      radial-gradient(ellipse at 85% 15%, rgba(240, 147, 251, 0.3) 0%, transparent 55%),
+      radial-gradient(ellipse at 50% 50%, rgba(102, 126, 234, 0.2) 0%, transparent 60%);
+  }
+
+  .container::after {
+    content: '';
+    position: absolute;
+    width: 600px;
+    height: 600px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.04);
+    top: -200px;
+    right: -200px;
+    pointer-events: none;
   }
 
   .card {
     width: 100%;
-    max-width: 400px;
-    background: #1a1a1a;
-    border: 1px solid #2a2a2a;
-    border-radius: 12px;
-    padding: 2.5rem;
+    max-width: 420px;
+    background: #ffffff;
+    border-radius: 24px;
+    padding: 2.75rem 2.5rem;
+    box-shadow:
+      0 32px 64px rgba(0, 0, 0, 0.28),
+      0 8px 24px rgba(0, 0, 0, 0.16),
+      0 0 0 1px rgba(255, 255, 255, 0.1);
+    position: relative;
+    z-index: 1;
+  }
+
+  :global([data-theme="dark"]) .card {
+    background: #17172a;
+    box-shadow:
+      0 32px 64px rgba(0, 0, 0, 0.6),
+      0 8px 24px rgba(0, 0, 0, 0.4),
+      0 0 0 1px rgba(255, 255, 255, 0.06);
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 0.4rem;
+  }
+
+  .brand-icon {
+    width: 44px;
+    height: 44px;
+    background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+    border-radius: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.25rem;
+    box-shadow: 0 6px 16px rgba(99, 102, 241, 0.35);
   }
 
   h1 {
-    font-size: 1.75rem;
-    font-weight: 700;
-    margin-bottom: 0.25rem;
-    letter-spacing: -0.03em;
+    font-size: 1.8rem;
+    font-weight: 800;
+    letter-spacing: -0.04em;
+    color: #0f0f23;
+    line-height: 1;
+  }
+
+  :global([data-theme="dark"]) h1 {
+    color: #f0f0ff;
   }
 
   h1 span {
-    color: #4f8ef7;
+    color: #6366f1;
   }
 
   .subtitle {
-    color: #666;
-    font-size: 0.9rem;
+    color: #6b7280;
+    font-size: 0.875rem;
     margin-bottom: 2rem;
+    margin-top: 0.4rem;
+  }
+
+  :global([data-theme="dark"]) .subtitle {
+    color: #8888aa;
   }
 
   .tab-row {
     display: flex;
-    background: #111;
-    border-radius: 8px;
+    background: #f3f4f6;
+    border-radius: 12px;
     padding: 4px;
-    margin-bottom: 1.5rem;
+    margin-bottom: 1.75rem;
     gap: 4px;
+  }
+
+  :global([data-theme="dark"]) .tab-row {
+    background: #1e1e30;
   }
 
   .tab-btn {
     flex: 1;
-    padding: 0.5rem;
+    padding: 0.55rem;
     background: transparent;
     border: none;
-    color: #666;
+    color: #6b7280;
     font-size: 0.9rem;
-    border-radius: 6px;
-    transition: all 0.15s;
+    font-weight: 500;
+    border-radius: 9px;
+    transition: all 0.2s;
+    font-family: inherit;
   }
 
   .tab-btn.active {
-    background: #2a2a2a;
-    color: #fff;
+    background: #ffffff;
+    color: #0f0f23;
+    font-weight: 600;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06);
+  }
+
+  :global([data-theme="dark"]) .tab-btn.active {
+    background: #2a2a40;
+    color: #f0f0ff;
   }
 
   .field {
@@ -113,50 +193,82 @@
   }
 
   label {
-    font-size: 0.85rem;
-    color: #aaa;
+    font-size: 0.83rem;
+    font-weight: 500;
+    color: #374151;
+  }
+
+  :global([data-theme="dark"]) label {
+    color: #d4d4e8;
   }
 
   input {
-    padding: 0.6rem 0.8rem;
-    background: #111;
-    border: 1px solid #333;
-    border-radius: 8px;
-    color: #fff;
+    padding: 0.7rem 0.9rem;
+    background: #f9fafb;
+    border: 1.5px solid #e5e7eb;
+    border-radius: 12px;
+    color: #0f0f23;
     font-size: 0.95rem;
     outline: none;
-    transition: border-color 0.15s;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    font-family: inherit;
+  }
+
+  :global([data-theme="dark"]) input {
+    background: #1e1e30;
+    border-color: #2a2a40;
+    color: #f0f0ff;
+  }
+
+  input::placeholder {
+    color: #9ca3af;
   }
 
   input:focus {
-    border-color: #4f8ef7;
+    border-color: #6366f1;
+    box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.12);
+    background: #ffffff;
+  }
+
+  :global([data-theme="dark"]) input:focus {
+    background: #17172a;
   }
 
   .error {
-    background: rgba(239, 68, 68, 0.1);
-    border: 1px solid rgba(239, 68, 68, 0.3);
-    color: #f87171;
-    padding: 0.6rem 0.8rem;
-    border-radius: 8px;
+    background: rgba(239, 68, 68, 0.07);
+    border: 1px solid rgba(239, 68, 68, 0.2);
+    color: #ef4444;
+    padding: 0.65rem 0.9rem;
+    border-radius: 10px;
     font-size: 0.85rem;
     margin-bottom: 1rem;
+    font-weight: 500;
   }
 
   .submit-btn {
     width: 100%;
-    padding: 0.7rem;
-    background: #4f8ef7;
+    padding: 0.8rem;
+    background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
     border: none;
-    border-radius: 8px;
+    border-radius: 12px;
     color: #fff;
-    font-size: 1rem;
+    font-size: 0.95rem;
     font-weight: 600;
-    transition: background 0.15s, opacity 0.15s;
+    letter-spacing: 0.01em;
+    transition: opacity 0.15s, transform 0.15s, box-shadow 0.15s;
     margin-top: 0.5rem;
+    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.35);
+    font-family: inherit;
   }
 
   .submit-btn:hover:not(:disabled) {
-    background: #3a7de8;
+    opacity: 0.92;
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px rgba(99, 102, 241, 0.45);
+  }
+
+  .submit-btn:active:not(:disabled) {
+    transform: translateY(0);
   }
 
   .submit-btn:disabled {
@@ -167,8 +279,11 @@
 
 <div class="container">
   <div class="card">
-    <h1>Photo<span>App</span></h1>
-    <p class="subtitle">Self-hosted photo management</p>
+    <div class="brand">
+      <div class="brand-icon">📷</div>
+      <h1>Photo<span>App</span></h1>
+    </div>
+    <p class="subtitle">Your self-hosted photo library</p>
 
     <div class="tab-row">
       <button
@@ -234,5 +349,6 @@
         {loading ? 'Please wait...' : mode === 'login' ? 'Sign in' : 'Create account'}
       </button>
     </form>
+
   </div>
 </div>

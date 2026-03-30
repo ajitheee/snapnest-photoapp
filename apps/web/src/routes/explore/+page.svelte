@@ -29,41 +29,41 @@
   function searchTag(tag: string) {
     goto(`/search?q=${encodeURIComponent(tag)}`);
   }
-  function searchMonth(label: string) {
-    goto(`/search?q=${encodeURIComponent(label)}`);
+  function searchMonth(key: string) {
+    goto(`/search?month=${encodeURIComponent(key)}`);
   }
   function searchLocation(loc: string) {
-    goto(`/search?q=${encodeURIComponent(loc)}`);
+    goto(`/search?location=${encodeURIComponent(loc)}`);
   }
 </script>
 
 <style>
   .page { padding: 1.5rem; max-width: 1600px; margin: 0 auto; }
   h2 { font-size: 1.5rem; font-weight: 700; margin-bottom: 1.5rem; }
-  .loading, .error-msg, .empty { text-align: center; padding: 4rem 2rem; color: #666; }
-  .error-msg { color: #f87171; }
+  .loading, .error-msg, .empty { text-align: center; padding: 4rem 2rem; color: var(--text-muted); }
+  .error-msg { color: var(--error); }
   section { margin-bottom: 2.5rem; }
   .section-header { display: flex; align-items: baseline; gap: 0.75rem; margin-bottom: 1rem; }
   .section-title { font-size: 1.1rem; font-weight: 700; }
-  .section-count { color: #666; font-size: 0.85rem; }
+  .section-count { color: var(--text-muted); font-size: 0.85rem; }
   /* Month / location cards */
   .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 8px; }
-  .card { border-radius: 10px; overflow: hidden; background: #1a1a1a; cursor: pointer; position: relative; aspect-ratio: 4/3; }
+  .card { border-radius: 10px; overflow: hidden; background: var(--surface-2); cursor: pointer; position: relative; aspect-ratio: 4/3; }
   .card:hover .card-overlay { opacity: 1; }
   .card-img { width: 100%; height: 100%; object-fit: cover; display: block; }
-  .card-placeholder { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 2rem; color: #333; }
+  .card-placeholder { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 2rem; color: var(--border-2); }
   .card-overlay { position: absolute; inset: 0; background: linear-gradient(to top, rgba(0,0,0,0.75) 0%, transparent 55%);
     display: flex; flex-direction: column; justify-content: flex-end; padding: 0.6rem; transition: opacity 0.2s; opacity: 1; }
   .card-label { font-size: 0.85rem; font-weight: 700; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .card-sub { font-size: 0.75rem; color: #ccc; margin-top: 1px; }
   /* Tags */
   .tag-cloud { display: flex; flex-wrap: wrap; gap: 0.5rem; }
-  .tag-pill { padding: 0.3rem 0.75rem; background: #1a1a1a; border: 1px solid #333; border-radius: 999px;
-    color: #ccc; font-size: 0.85rem; cursor: pointer; transition: border-color 0.15s, color 0.15s; }
-  .tag-pill:hover { border-color: #4f8ef7; color: #4f8ef7; }
-  .tag-count { color: #555; font-size: 0.75rem; margin-left: 0.25rem; }
+  .tag-pill { padding: 0.3rem 0.75rem; background: var(--surface-2); border: 1px solid var(--border);
+    border-radius: 999px; color: var(--text-2); font-size: 0.85rem; cursor: pointer; transition: border-color 0.15s, color 0.15s; }
+  .tag-pill:hover { border-color: var(--accent); color: var(--accent); }
+  .tag-count { color: var(--text-subtle); font-size: 0.75rem; margin-left: 0.25rem; }
   /* No-data hint */
-  .hint { background: #111; border: 1px solid #222; border-radius: 10px; padding: 1.5rem; color: #555; font-size: 0.85rem; }
+  .hint { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1.5rem; color: var(--text-muted); font-size: 0.85rem; }
 </style>
 
 <div class="page">
@@ -86,8 +86,8 @@
         </div>
         <div class="cards">
           {#each data.months as m}
-            <div class="card" on:click={() => searchMonth(m.label)} role="button" tabindex="0"
-              on:keydown={(e) => e.key === 'Enter' && searchMonth(m.label)}>
+            <div class="card" on:click={() => searchMonth(m.key)} role="button" tabindex="0"
+              on:keydown={(e) => e.key === 'Enter' && searchMonth(m.key)}>
               {#if m.cover && m.cover.type !== 'OTHER'}
                 <img class="card-img" src={api.assets.thumbnailUrl(m.cover.id)} alt={m.label} loading="lazy"
                   on:error={(e) => imgError(e)} />

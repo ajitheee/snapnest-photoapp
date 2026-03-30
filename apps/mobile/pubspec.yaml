@@ -1,0 +1,71 @@
+name: photoapp_mobile
+description: PhotoApp — self-hosted photo backup and management
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.2.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # ── Networking ──────────────────────────────────────────────────────────────
+  dio: ^5.4.0                     # HTTP client with interceptors + upload progress
+  dio_http2_adapter: ^2.0.0       # HTTP/2 for large transfers (optional)
+
+  # ── Auth & storage ──────────────────────────────────────────────────────────
+  flutter_secure_storage: ^9.0.0  # JWT token storage in Keychain / Keystore
+  shared_preferences: ^2.2.2      # Non-sensitive user settings
+
+  # ── Device photo library ────────────────────────────────────────────────────
+  photo_manager: ^3.0.0           # Access camera roll / gallery (iOS + Android)
+
+  # ── Background sync ─────────────────────────────────────────────────────────
+  workmanager: ^0.5.2             # Android WorkManager + iOS BGTaskScheduler
+
+  # ── Local database (sync state tracking) ────────────────────────────────────
+  sqflite: ^2.3.2                 # SQLite for tracking uploaded assets
+  path_provider: ^2.1.2           # Stable paths for cache + DB
+
+  # ── Image display & caching ─────────────────────────────────────────────────
+  cached_network_image: ^3.3.1    # Network images with disk cache
+  flutter_cache_manager: ^3.3.2   # Custom cache manager (offline thumbnails)
+
+  # ── Push notifications ───────────────────────────────────────────────────────
+  firebase_core: ^2.27.0
+  firebase_messaging: ^14.7.19
+  flutter_local_notifications: ^17.0.0  # Show notifications when app is in foreground
+
+  # ── Home screen widget ───────────────────────────────────────────────────────
+  home_widget: ^0.4.1             # Pass data from Flutter → iOS WidgetKit / Android widget
+
+  # ── Crypto (hash computation) ────────────────────────────────────────────────
+  crypto: ^3.0.3
+
+  # ── UI utilities ─────────────────────────────────────────────────────────────
+  flutter_staggered_grid_view: ^0.7.0  # Virtualized photo grid
+  intl: ^0.19.0                        # Date formatting
+  permission_handler: ^11.3.0          # Runtime permission requests
+  connectivity_plus: ^6.0.3            # Wi-Fi detection for backup gating
+  battery_plus: ^6.0.1                 # Charging state detection
+  wakelock_plus: ^1.1.4               # Keep screen on during active sync
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+  build_runner: ^2.4.8
+  json_serializable: ^6.7.1
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/
+  fonts:
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/Inter-Regular.ttf
+        - asset: assets/fonts/Inter-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Inter-SemiBold.ttf
+          weight: 600

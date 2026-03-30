@@ -85,6 +85,32 @@ export interface ShareLink {
   asset?: { id: string; fileName: string } | null;
 }
 
+export interface Person {
+  id: string;
+  name: string;
+  faceCount: number;
+  coverFaceId: string | null;
+  coverAssetId: string | null;
+  createdAt: string;
+}
+
+export interface SmartAlbumGroup {
+  people: SmartAlbumItem[];
+  locations: SmartAlbumItem[];
+  months: SmartAlbumItem[];
+  tags: SmartAlbumItem[];
+  videos: SmartAlbumItem[];
+}
+
+export interface SmartAlbumItem {
+  id: string;
+  name: string;
+  type: string;
+  assetCount: number;
+  coverAssetId: string | null;
+  criteria: Record<string, string>;
+}
+
 export interface SearchResult {
   mode: 'text' | 'semantic';
   assets: Asset[];
@@ -126,6 +152,11 @@ export const api = {
     async get(id: string): Promise<Asset> {
       return request<Asset>(`/assets/${id}`);
     },
+    async listVideos(page = 1, limit = 50, month = ''): Promise<PaginatedAssets> {
+      const qs = new URLSearchParams({ page: String(page), limit: String(limit) });
+      if (month) qs.set('month', month);
+      return request<PaginatedAssets>(`/assets/videos?${qs}`);
+    },
     async listFavorites(page = 1, limit = 50): Promise<PaginatedAssets> {
       return request<PaginatedAssets>(`/assets/favorites?page=${page}&limit=${limit}`);
     },
@@ -160,6 +191,27 @@ export const api = {
       const token = typeof localStorage !== 'undefined' ? localStorage.getItem('photoapp_token') : null;
       const qs = token ? `?token=${encodeURIComponent(token)}` : '';
       return `${API_BASE}/assets/${id}/thumbnail${qs}`;
+    },
+    downloadUrl(id: string): string {
+      const token = typeof localStorage !== 'undefined' ? localStorage.getItem('photoapp_token') : null;
+      const qs = token ? `?token=${encodeURIComponent(token)}` : '';
+      return `${API_BASE}/assets/${id}/download${qs}`;
+    },
+    async downloadZip(assetIds: string[]): Promise<void> {
+      const token = typeof localStorage !== 'undefined' ? localStorage.getItem('photoapp_token') : null;
+      const response = await fetch(`${API_BASE}/assets/download-zip`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ assetIds }),
+      });
+      if (!response.ok) throw new Error('Download failed');
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `photos-${Date.now()}.zip`;
+      a.click();
+      URL.revokeObjectURL(url);
     },
     async upload(file: File, fileCreatedAt?: string): Promise<Asset> {
       const formData = new FormData();
@@ -217,6 +269,20 @@ export const api = {
         body: JSON.stringify({ assetIds }),
       });
     },
+    async downloadZip(id: string, albumName: string): Promise<void> {
+      const token = typeof localStorage !== 'undefined' ? localStorage.getItem('photoapp_token') : null;
+      const response = await fetch(`${API_BASE}/albums/${id}/download`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!response.ok) throw new Error('Download failed');
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${albumName}.zip`;
+      a.click();
+      URL.revokeObjectURL(url);
+    },
   },
 
   sharing: {
@@ -246,9 +312,131 @@ export const api = {
   },
 
   search: {
-    async search(query: string, mode: 'text' | 'semantic' | 'auto' = 'auto', page = 1, limit = 30): Promise<SearchResult> {
-      const qs = new URLSearchParams({ q: query, mode, page: String(page), limit: String(limit) });
+    async search(query: string, mode: 'text' | 'semantic' | 'auto' = 'auto', month = '', location = '', page = 1, limit = 50): Promise<SearchResult> {
+      const params: Record<string, string> = { q: query, mode, page: String(page), limit: String(limit) };
+      if (month) params.month = month;
+      if (location) params.location = location;
+      const qs = new URLSearchParams(params);
       return request<SearchResult>(`/search?${qs}`);
     },
   },
+
+  people: {
+    async list(): Promise<Person[]> {
+      return request<Person[]>('/people');
+    },
+    async get(id: string): Promise<Person> {
+      return request<Person>(`/people/${id}`);
+    },
+    async getAssets(id: string, page = 1, limit = 200): Promise<PaginatedAssets> {
+      return request<PaginatedAssets>(`/people/${id}/assets?page=${page}&limit=${limit}`);
+    },
+    async cluster(): Promise<{ created: number; updated: number; total: number }> {
+      return request('/people/cluster', { method: 'POST' });
+    },
+    async rename(id: string, name: string): Promise<Person> {
+      return request<Person>(`/people/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+    },
+    async remove(id: string): Promise<void> {
+      return request<void>(`/people/${id}`, { method: 'DELETE' });
+    },
+    async merge(sourceId: string, targetId: string): Promise<Person> {
+      return request<Person>(`/people/${sourceId}/merge/${targetId}`, { method: 'POST' });
+    },
+  },
+
+  smartAlbums: {
+    async list(): Promise<SmartAlbumGroup> {
+      return request<SmartAlbumGroup>('/albums/smart');
+    },
+  },
+
+  memories: {
+    async get(): Promise<MemoriesResponse> {
+      return request<MemoriesResponse>('/memories');
+    },
+  },
+
+  admin: {
+    async getStats(): Promise<AdminStats> {
+      return request<AdminStats>('/admin/stats');
+    },
+    async getUsers(page = 1, limit = 50): Promise<AdminUsersResult> {
+      return request<AdminUsersResult>(`/admin/users?page=${page}&limit=${limit}`);
+    },
+    async updateUser(id: string, patch: { name?: string; isAdmin?: boolean; storageLimitBytes?: string | null }): Promise<AdminUser> {
+      return request<AdminUser>(`/admin/users/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+      });
+    },
+    async deleteUser(id: string): Promise<void> {
+      return request<void>(`/admin/users/${id}`, { method: 'DELETE' });
+    },
+  },
 };
+
+export interface AdminUser {
+  id: string;
+  email: string;
+  name: string;
+  isAdmin: boolean;
+  storageLimitBytes: string | null;
+  storageUsedBytes: string;
+  createdAt: string;
+  _count: { assets: number };
+}
+
+export interface AdminUsersResult {
+  users: AdminUser[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export interface AdminStats {
+  users: number;
+  assets: number;
+  storageBytesTotal: string;
+  queues: {
+    thumbnail: Record<string, number>;
+    metadata: Record<string, number>;
+    transcode: Record<string, number>;
+    ml: Record<string, number>;
+  };
+}
+
+export interface MemoryAsset {
+  id: string;
+  fileName: string;
+  fileCreatedAt: string;
+  thumbnailSmallPath: string | null;
+  thumbnailLargePath: string | null;
+  locationCity: string | null;
+  locationCountry: string | null;
+  isFavorite: boolean;
+  width: number | null;
+  height: number | null;
+  mimeType: string;
+  type: 'IMAGE' | 'VIDEO' | 'OTHER';
+}
+
+export interface MemoryYearGroup {
+  year: number;
+  yearsAgo: number;
+  label: string;
+  count: number;
+  assets: MemoryAsset[];
+}
+
+export interface MemoriesResponse {
+  yearGroups: MemoryYearGroup[];
+  randomPhoto: MemoryAsset | null;
+  recentHighlights: MemoryAsset[];
+  meta: { totalPhotos: number; generatedAt: string };
+}
