@@ -365,6 +365,19 @@ export const api = {
     },
   },
 
+  users: {
+    async getPreferences(): Promise<UserPreferences> {
+      return request<UserPreferences>('/users/preferences');
+    },
+    async updatePreferences(patch: Partial<UserPreferences>): Promise<UserPreferences> {
+      return request<UserPreferences>('/users/preferences', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+      });
+    },
+  },
+
   admin: {
     async getStats(): Promise<AdminStats> {
       return request<AdminStats>('/admin/stats');
@@ -383,6 +396,33 @@ export const api = {
       return request<void>(`/admin/users/${id}`, { method: 'DELETE' });
     },
   },
+};
+
+export interface UserPreferences {
+  assetViewer: {
+    loadPreviewImage: boolean;
+    loadOriginalImage: boolean;
+  };
+  videos: {
+    autoPlay: boolean;
+    looping: boolean;
+  };
+  theme: {
+    automatic: boolean;
+    primaryColor: string | null;
+    colorfulInterface: boolean;
+  };
+  photoGrid: {
+    showStorageIndicator: boolean;
+    assetsPerRow: number;
+  };
+}
+
+export const DEFAULT_PREFERENCES: UserPreferences = {
+  assetViewer: { loadPreviewImage: true, loadOriginalImage: false },
+  videos: { autoPlay: true, looping: false },
+  theme: { automatic: false, primaryColor: null, colorfulInterface: false },
+  photoGrid: { showStorageIndicator: true, assetsPerRow: 4 },
 };
 
 export interface AdminUser {

@@ -5,6 +5,8 @@
   import { page } from '$app/stores';
   import { auth, isAuthenticated } from '$lib/stores';
   import { api } from '$lib/api';
+  import { settings } from '$lib/settings';
+  import UserSettings from '$lib/UserSettings.svelte';
 
   const publicRoutes = ['/'];
 
@@ -12,6 +14,7 @@
   let storageUsed = 0;
   let storageTotal = 0;
   let isDark = false;
+  let settingsOpen = false;
 
   $: isShareRoute = $page.url.pathname.startsWith('/s/');
 
@@ -20,6 +23,44 @@
     isDark = localStorage.getItem('theme') === 'dark';
     document.documentElement.setAttribute('data-theme', isDark ? 'dark' : '');
   });
+
+  $: if ($isAuthenticated) {
+    settings.init();
+  }
+
+  // Apply theme settings reactively
+  $: {
+    if (typeof document !== 'undefined' && $settings) {
+      const prefs = $settings;
+
+      // Automatic theme: follow system
+      if (prefs.theme.automatic) {
+        const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        isDark = systemDark;
+        document.documentElement.setAttribute('data-theme', systemDark ? 'dark' : '');
+        localStorage.setItem('theme', systemDark ? 'dark' : 'light');
+      }
+
+      // Primary color
+      if (prefs.theme.primaryColor) {
+        document.documentElement.style.setProperty('--accent', prefs.theme.primaryColor);
+        // Derive glow from color
+        document.documentElement.style.setProperty('--accent-glow', prefs.theme.primaryColor + '26');
+      } else {
+        document.documentElement.style.removeProperty('--accent');
+        document.documentElement.style.removeProperty('--accent-glow');
+      }
+
+      // Colorful interface: tint bg and sidebar with accent
+      if (prefs.theme.colorfulInterface && prefs.theme.primaryColor) {
+        document.documentElement.style.setProperty('--bg', prefs.theme.primaryColor + '0d');
+        document.documentElement.style.setProperty('--sidebar', prefs.theme.primaryColor + '1a');
+      } else {
+        document.documentElement.style.removeProperty('--bg');
+        document.documentElement.style.removeProperty('--sidebar');
+      }
+    }
+  }
 
   function toggleTheme() {
     isDark = !isDark;
@@ -109,16 +150,15 @@
   }
 
   .logo-icon {
-    width: 34px;
-    height: 34px;
-    background: linear-gradient(135deg, var(--accent) 0%, #8b5cf6 100%);
-    border-radius: 10px;
+    flex-shrink: 0;
     display: flex;
     align-items: center;
-    justify-content: center;
-    font-size: 1rem;
-    flex-shrink: 0;
-    box-shadow: 0 4px 8px var(--accent-glow);
+  }
+
+  .logo-icon img {
+    width: 36px;
+    height: 36px;
+    object-fit: contain;
   }
 
   .logo-text {
@@ -360,8 +400,8 @@
   <div class="app-shell">
     <aside class="sidebar">
       <div class="logo">
-        <div class="logo-icon">📷</div>
-        <span class="logo-text">Photo<span>App</span></span>
+        <div class="logo-icon"><img src="/logo.png" alt="SnapNest" /></div>
+        <span class="logo-text">Snap<span>Nest</span></span>
       </div>
 
       <!-- Search -->
@@ -496,6 +536,11 @@
         <div class="user-row">
           <div class="user-avatar">{($auth.user?.email ?? 'U')[0].toUpperCase()}</div>
           <span class="user-email">{$auth.user?.email ?? ''}</span>
+          <button class="icon-btn" on:click={() => settingsOpen = true} title="Settings">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/>
+            </svg>
+          </button>
           <button class="icon-btn" on:click={toggleTheme} title="Toggle theme">
             {isDark ? '☀' : '🌙'}
           </button>
@@ -510,6 +555,8 @@
       <slot />
     </main>
   </div>
+
+  <UserSettings bind:open={settingsOpen} />
 {:else}
   <slot />
 {/if}

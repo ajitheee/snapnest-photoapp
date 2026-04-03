@@ -3,6 +3,7 @@
   import { api } from '$lib/api';
   import type { Asset } from '$lib/api';
   import Hls from 'hls.js';
+  import { settings } from '$lib/settings';
 
   /** The flat list of assets to navigate through. */
   export let assets: Asset[] = [];
@@ -95,9 +96,9 @@
     else if (e.key === 'ArrowRight' && zoomScale === 1) next();
   }
 
-  function close() { viewerIndex = -1; resetZoom(); }
-  function prev()  { if (viewerIndex > 0)                     { viewerIndex--; resetZoom(); } }
-  function next()  { if (viewerIndex < assets.length - 1)     { viewerIndex++; resetZoom(); } }
+  function close() { viewerIndex = -1; resetZoom(); videoError = false; }
+  function prev()  { if (viewerIndex > 0)                     { viewerIndex--; resetZoom(); videoError = false; } }
+  function next()  { if (viewerIndex < assets.length - 1)     { viewerIndex++; resetZoom(); videoError = false; } }
 
   // ── actions ───────────────────────────────────────────────────────────────
   async function toggleFavorite() {
@@ -142,18 +143,30 @@
   }
 
   // ── HLS video player ──────────────────────────────────────────────────────
+  let videoError = false;
+
   function hlsUrl(asset: Asset) {
     const token = typeof localStorage !== 'undefined' ? localStorage.getItem('photoapp_token') : null;
     return `/api/assets/${asset.id}/stream/master.m3u8${token ? `?token=${encodeURIComponent(token)}` : ''}`;
   }
 
+  function posterUrl(asset: Asset) {
+    const token = typeof localStorage !== 'undefined' ? localStorage.getItem('photoapp_token') : null;
+    return `/api/assets/${asset.id}/thumbnail${token ? `?token=${encodeURIComponent(token)}&size=large` : '?size=large'}`;
+  }
+
   function hlsPlayer(node: HTMLVideoElement, src: string) {
     let hls: Hls | null = null;
+    videoError = false;
 
     function init(s: string) {
+      videoError = false;
       if (hls) { hls.destroy(); hls = null; }
       if (Hls.isSupported()) {
         hls = new Hls({
+          // Start at lowest quality for fast initial load, then switch up
+          startLevel: -1,
+          abrEwmaDefaultEstimate: 500000,
           // Add Bearer token to every XHR request (m3u8 + all .ts segments)
           xhrSetup(xhr: XMLHttpRequest) {
             const token = typeof localStorage !== 'undefined'
@@ -161,6 +174,13 @@
               : null;
             if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
           },
+        });
+        hls.on(Hls.Events.ERROR, (_event: any, data: any) => {
+          if (data.fatal) {
+            videoError = true;
+            hls?.destroy();
+            hls = null;
+          }
         });
         hls.loadSource(s);
         hls.attachMedia(node);
@@ -179,6 +199,10 @@
   // ── helpers ───────────────────────────────────────────────────────────────
   function fullUrl(asset: Asset) {
     const token = typeof localStorage !== 'undefined' ? localStorage.getItem('photoapp_token') : null;
+    // If loadOriginalImage is on, use the download endpoint for full resolution
+    if ($settings.assetViewer.loadOriginalImage) {
+      return token ? `/api/assets/${asset.id}/download?token=${encodeURIComponent(token)}` : `/api/assets/${asset.id}/download`;
+    }
     return `/api/assets/${asset.id}/thumbnail${token ? `?token=${encodeURIComponent(token)}&size=large` : '?size=large'}`;
   }
   function formatDate(d: string) {
@@ -229,14 +253,26 @@
       on:mousedown={onPanStart}
     >
       {#if viewerAsset.type === 'VIDEO'}
-        <!-- svelte-ignore a11y-media-has-caption -->
-        <video
-          class="viewer-video"
-          controls
-          autoplay
-          use:hlsPlayer={hlsUrl(viewerAsset)}
-          on:click|stopPropagation
-        ></video>
+        {#if videoError}
+          <div class="video-error">
+            <div class="video-error-icon">⚠</div>
+            <p>Unable to play this video</p>
+            <a class="vbtn" href={api.assets.downloadUrl(viewerAsset.id)} download={viewerAsset.fileName}>
+              ⬇ Download instead
+            </a>
+          </div>
+        {:else}
+          <!-- svelte-ignore a11y-media-has-caption -->
+          <video
+            class="viewer-video"
+            controls
+            autoplay={$settings.videos.autoPlay}
+            loop={$settings.videos.looping}
+            poster={posterUrl(viewerAsset)}
+            use:hlsPlayer={hlsUrl(viewerAsset)}
+            on:click|stopPropagation
+          ></video>
+        {/if}
       {:else if viewerAsset.type === 'IMAGE'}
         <img
           class="viewer-img"
@@ -323,6 +359,14 @@
     background: #000;
   }
   .viewer-broken { font-size: 5rem; color: #333; }
+
+  .video-error {
+    display: flex; flex-direction: column; align-items: center;
+    gap: 0.75rem; color: #fff; text-align: center;
+    padding: 2rem;
+  }
+  .video-error-icon { font-size: 3rem; opacity: 0.7; }
+  .video-error p { font-size: 0.95rem; color: #ccc; margin: 0; }
 
   /* Close button */
   .viewer-close {

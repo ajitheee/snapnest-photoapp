@@ -109,15 +109,15 @@
   }
 
   .brand-icon {
-    width: 44px;
-    height: 44px;
-    background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
-    border-radius: 14px;
+    flex-shrink: 0;
     display: flex;
     align-items: center;
-    justify-content: center;
-    font-size: 1.25rem;
-    box-shadow: 0 6px 16px rgba(99, 102, 241, 0.35);
+  }
+
+  .brand-icon img {
+    width: 72px;
+    height: 72px;
+    object-fit: contain;
   }
 
   h1 {
@@ -280,8 +280,8 @@
 <div class="container">
   <div class="card">
     <div class="brand">
-      <div class="brand-icon">📷</div>
-      <h1>Photo<span>App</span></h1>
+      <div class="brand-icon"><img src="/logo.png" alt="SnapNest" /></div>
+      <h1>Snap<span>Nest</span></h1>
     </div>
     <p class="subtitle">Your self-hosted photo library</p>
 

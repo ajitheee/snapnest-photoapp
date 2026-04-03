@@ -5,6 +5,7 @@
   import { isAuthenticated } from '$lib/stores';
   import type { Asset, MemoryYearGroup, MemoryAsset } from '$lib/api';
   import PhotoViewer from '$lib/PhotoViewer.svelte';
+  import { settings } from '$lib/settings';
 
   let assets: Asset[] = [];
   let loading = true;
@@ -203,7 +204,6 @@
   /* Grid */
   .grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(195px, 1fr));
     gap: 6px;
   }
 
@@ -413,7 +413,7 @@
       <p style="margin-top:0.5rem;font-size:0.875rem"><a href="/upload" style="color:var(--accent);font-weight:600">Upload your first photo</a> to get started.</p>
     </div>
   {:else}
-    <div class="grid">
+    <div class="grid" style="grid-template-columns: repeat({$settings.photoGrid.assetsPerRow}, 1fr)">
       {#each assets as asset, i (asset.id)}
         <div class="asset-tile" class:selected={selected.has(asset.id)}
           on:click={() => onTileClick(asset, i)} role="button" tabindex="0"
@@ -431,12 +431,14 @@
             </div>
           {/if}
           {#if asset.type === 'VIDEO'}<span class="video-badge">VIDEO</span>{/if}
+          {#if $settings.photoGrid.showStorageIndicator}
           <div class="overlay">
             <div class="overlay-info">
               <div class="overlay-name">{asset.fileName}</div>
               <div class="overlay-size">{formatSize(asset.fileSizeBytes)} &middot; {formatDate(asset.fileCreatedAt)}</div>
             </div>
           </div>
+          {/if}
         </div>
       {/each}
     </div>
