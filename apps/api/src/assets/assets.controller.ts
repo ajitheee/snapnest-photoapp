@@ -30,12 +30,16 @@ import { v4 as uuidv4 } from 'uuid';
 import { Response, Request as ExpressRequest } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AssetsService } from './assets.service';
+import { EditService } from './edit.service';
 import { StorageService } from '../storage/storage.service';
 import { UploadAssetDto } from './dto/upload-asset.dto';
 import { CheckHashesDto } from './dto/check-hashes.dto';
 import { CreateUploadSessionDto } from './dto/create-upload-session.dto';
+import { EditAssetDto } from './dto/edit-asset.dto';
 import { User } from '@prisma/client';
 import * as fs from 'fs';
+import { pipeline } from 'stream/promises';
+import { Readable } from 'stream';
 
 const uploadStorage = diskStorage({
   destination: process.env.UPLOAD_PATH || '/uploads',
@@ -62,6 +66,7 @@ export class AssetsController {
   constructor(
     private readonly assetsService: AssetsService,
     private readonly storage: StorageService,
+    private readonly editService: EditService,
   ) {}
 
   @Post('upload')
@@ -72,7 +77,14 @@ export class AssetsController {
     @Request() req: { user: User },
   ) {
     if (!file) throw new NotFoundException('No file provided');
-    const asset = await this.assetsService.uploadAsset(req.user.id, file, dto.fileCreatedAt);
+    const lat = dto.locationLat ? parseFloat(dto.locationLat) : undefined;
+    const lng = dto.locationLng ? parseFloat(dto.locationLng) : undefined;
+    const asset = await this.assetsService.uploadAsset(
+      req.user.id, file, dto.fileCreatedAt, dto.deviceAssetId,
+      isFinite(lat!) ? lat : undefined,
+      isFinite(lng!) ? lng : undefined,
+      dto.isLivePhoto,
+    );
     return serializeAsset(asset);
   }
 
@@ -163,13 +175,27 @@ export class AssetsController {
     return { ...result, assets: result.assets.map(serializeAsset) };
   }
 
+
+  /**
+   * GET /assets/live-photos-missing-video
+   * Returns deviceAssetId list of live photos that have no companion video yet.
+   * Mobile app uses this to backfill live photo videos from the device library.
+   */
+  @Get('live-photos-missing-video')
+  async livePhotosMissingVideo(@Request() req: { user: User }) {
+    const assets = await this.assetsService.findLivePhotosMissingVideo(req.user.id);
+    return { assets };
+  }
+
   @Get()
   async findAll(
     @Request() req: { user: User },
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number,
+    @Query('isLivePhoto') isLivePhoto?: string,
   ) {
-    const result = await this.assetsService.findAll(req.user.id, page, limit);
+    const liveFilter = isLivePhoto === 'true' ? true : undefined;
+    const result = await this.assetsService.findAll(req.user.id, page, limit, liveFilter);
     return { ...result, assets: result.assets.map(serializeAsset) };
   }
 
@@ -178,6 +204,17 @@ export class AssetsController {
   @Get(':id')
   async findOne(@Param('id') id: string, @Request() req: { user: User }) {
     const asset = await this.assetsService.findOne(id, req.user.id);
+    return serializeAsset(asset);
+  }
+
+  @Patch(':id/location')
+  async updateLocation(
+    @Param('id') id: string,
+    @Body('locationLat') locationLat: number,
+    @Body('locationLng') locationLng: number,
+    @Request() req: { user: User },
+  ) {
+    const asset = await this.assetsService.updateLocation(id, req.user.id, locationLat, locationLng);
     return serializeAsset(asset);
   }
 
@@ -219,20 +256,58 @@ export class AssetsController {
   @Get(':id/download')
   async download(
     @Param('id') id: string,
-    @Request() req: { user: any },
+    @Query('inline') inline: string | undefined,
+    @Request() req: any,
     @Res() res: Response,
   ) {
     const asset = await this.assetsService.findOne(id, req.user.id) as any;
-    const filePath: string = asset.originalPath;
-    res.setHeader('Content-Type', asset.mimeType || 'application/octet-stream');
-    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(asset.fileName)}"`);
-    res.setHeader('Content-Length', asset.fileSizeBytes.toString());
+    const isVideo = asset.type === 'VIDEO';
+    const editedPath = asset.editedPath as string | null;
+    const filePath: string = (isVideo && editedPath) ? editedPath : asset.originalPath;
+    const contentType = (isVideo && editedPath) ? 'video/mp4' : (asset.mimeType || 'application/octet-stream');
+
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Accept-Ranges', 'bytes');
+    if (!inline) {
+      res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(asset.fileName)}"`);
+    }
+
+    const range = req.headers?.range as string | undefined;
+
     if (this.storage.isS3Key(filePath)) {
-      const stream = await this.storage.getStream(filePath);
-      stream.pipe(res as any);
+      const total = await this.storage.getObjectSize(filePath);
+      if (range) {
+        const parts = range.replace(/bytes=/, '').split('-');
+        const start = parseInt(parts[0], 10);
+        const end = parts[1] ? parseInt(parts[1], 10) : total - 1;
+        const { stream } = await this.storage.getStreamRange(filePath, `bytes=${start}-${end}`);
+        res.status(206);
+        res.setHeader('Content-Range', `bytes ${start}-${end}/${total}`);
+        res.setHeader('Content-Length', (end - start + 1).toString());
+        await pipeline(Readable.from(stream), res as any);
+      } else {
+        res.setHeader('Content-Length', total.toString());
+        const stream = await this.storage.getStream(filePath);
+        await pipeline(Readable.from(stream), res as any);
+      }
+      return;
+    }
+
+    if (!filePath || !fs.existsSync(filePath)) throw new NotFoundException('File not found');
+    const stat = fs.statSync(filePath);
+    const total = stat.size;
+
+    if (range) {
+      const parts = range.replace(/bytes=/, '').split('-');
+      const start = parseInt(parts[0], 10);
+      const end = parts[1] ? parseInt(parts[1], 10) : total - 1;
+      res.status(206);
+      res.setHeader('Content-Range', `bytes ${start}-${end}/${total}`);
+      res.setHeader('Content-Length', (end - start + 1).toString());
+      await pipeline(fs.createReadStream(filePath, { start, end }), res as any);
     } else {
-      if (!filePath || !fs.existsSync(filePath)) throw new NotFoundException('File not found');
-      fs.createReadStream(filePath).pipe(res as any);
+      res.setHeader('Content-Length', total.toString());
+      await pipeline(fs.createReadStream(filePath), res as any);
     }
   }
 
@@ -248,10 +323,10 @@ export class AssetsController {
     res.setHeader('Cache-Control', 'private, max-age=86400');
     if (this.storage.isS3Key(filePath)) {
       const stream = await this.storage.getStream(filePath);
-      stream.pipe(res as any);
+      await pipeline(Readable.from(stream), res as any);
     } else {
       if (!fs.existsSync(filePath)) throw new NotFoundException('Thumbnail not found');
-      fs.createReadStream(filePath).pipe(res as any);
+      await pipeline(fs.createReadStream(filePath), res as any);
     }
   }
 
@@ -272,17 +347,18 @@ export class AssetsController {
       ext === 'ts'   ? 'video/mp2t' :
       'application/octet-stream';
     res.setHeader('Content-Type', contentType);
-    res.setHeader('Cache-Control', 'private, max-age=3600');
+    // No caching: playlists change after edits, segments regenerated with same filenames
+    res.setHeader('Cache-Control', 'no-store');
 
     // Try S3 first (new uploads), fall back to local disk (legacy)
     const s3Key = `hls/${id}/${file}`;
     const localPath = join(this.assetsService.getHlsPath(id), file);
     try {
       const stream = await this.storage.getStream(s3Key);
-      stream.pipe(res as any);
+      await pipeline(Readable.from(stream), res as any);
     } catch {
       if (!fs.existsSync(localPath)) throw new NotFoundException('Stream file not found');
-      fs.createReadStream(localPath).pipe(res as any);
+      await pipeline(fs.createReadStream(localPath), res as any);
     }
   }
 
@@ -302,8 +378,7 @@ export class AssetsController {
     @Body() dto: CheckHashesDto,
     @Request() req: { user: User },
   ) {
-    const missing = await this.assetsService.checkHashes(req.user.id, dto.checksums);
-    return { missing };
+    return this.assetsService.checkHashes(req.user.id, dto.checksums);
   }
 
   // ─── Phase 5: Resumable chunked uploads ────────────────────────────────────
@@ -368,6 +443,118 @@ export class AssetsController {
 
   // ─── Phase 5: Live Photo / Motion Photo ────────────────────────────────────
 
+  // ─── Photo / Video Editing ─────────────────────────────────────────────────
+
+  /**
+   * POST /assets/:id/edit/preview
+   * Apply edit parameters on-the-fly and stream the result back as JPEG.
+   * Nothing is persisted; use this for live preview while the user tweaks sliders.
+   */
+  @Post(':id/edit/preview')
+  async editPreview(
+    @Param('id') id: string,
+    @Body() dto: EditAssetDto,
+    @Request() req: { user: User },
+    @Res() res: Response,
+  ) {
+    const { buffer, mimeType } = await this.editService.previewEdit(id, req.user.id, dto);
+    res.setHeader('Content-Type', mimeType);
+    res.setHeader('Cache-Control', 'no-store');
+    (res as any).send(buffer);
+  }
+
+  /**
+   * POST /assets/:id/edit/save
+   * Apply edits and save the result permanently (editedPath + editParams in DB).
+   * Returns the updated asset record.
+   */
+  @Post(':id/edit/save')
+  async editSave(
+    @Param('id') id: string,
+    @Body() dto: EditAssetDto,
+    @Request() req: { user: User },
+  ) {
+    const asset = await this.editService.saveEdit(id, req.user.id, dto);
+    return serializeAsset(asset);
+  }
+
+  /**
+   * GET /assets/:id/crop-preview
+   * Returns the original image resized to max 1080 px with only rotation applied.
+   * The crop screen uses this so coordinates are always relative to the original image.
+   */
+  @Get(':id/crop-preview')
+  async cropPreview(
+    @Param('id') id: string,
+    @Request() req: { user: User },
+    @Res() res: Response,
+  ) {
+    const { buffer, mimeType } = await this.editService.getCropPreview(id, req.user.id);
+    res.setHeader('Content-Type', mimeType);
+    res.setHeader('Cache-Control', 'private, max-age=86400');
+    (res as any).send(buffer);
+  }
+
+  /**
+   * GET /assets/:id/edited
+   * Stream the saved edited version of the asset (if editedPath is set).
+   */
+  @Get(':id/edited')
+  async getEdited(
+    @Param('id') id: string,
+    @Request() req: { user: User },
+    @Res() res: Response,
+  ) {
+    const { filePath, mimeType } = await this.editService.getEditedImage(id, req.user.id);
+    res.setHeader('Content-Type', mimeType);
+    res.setHeader('Cache-Control', 'private, max-age=3600');
+    if (this.storage.isS3Key(filePath)) {
+      const stream = await this.storage.getStream(filePath);
+      await pipeline(Readable.from(stream), res as any);
+    } else {
+      if (!fs.existsSync(filePath)) throw new NotFoundException('Edited image not found');
+      await pipeline(fs.createReadStream(filePath), res as any);
+    }
+  }
+
+  /**
+   * DELETE /assets/:id/edit
+   * Revert to original: clears editedPath and editParams from the DB,
+   * and deletes the stored edited image from S3.
+   */
+  @Delete(':id/edit')
+  async revertEdit(
+    @Param('id') id: string,
+    @Request() req: { user: User },
+  ) {
+    const asset = await this.editService.revertEdit(id, req.user.id);
+    return serializeAsset(asset);
+  }
+
+  /**
+   * GET /assets/:id/live-video
+   * Stream the companion MOV/MP4 for a Live Photo asset.
+   */
+  @Get(':id/live-video')
+  async getLiveVideo(
+    @Param('id') id: string,
+    @Request() req: { user: User },
+    @Res() res: Response,
+  ) {
+    const asset = await this.assetsService.findOne(id, req.user.id);
+    const videoPath = (asset as any).livePhotoVideoPath as string | null;
+    if (!videoPath) throw new NotFoundException('Live photo video not found');
+    res.setHeader('Content-Type', 'video/quicktime');
+    res.setHeader('Cache-Control', 'private, max-age=3600');
+    if (this.storage.isS3Key(videoPath)) {
+      const stream = await this.storage.getStream(videoPath);
+      await pipeline(Readable.from(stream), res as any);
+    } else {
+      if (!fs.existsSync(videoPath)) throw new NotFoundException('Live photo video file not found');
+      await pipeline(fs.createReadStream(videoPath), res as any);
+    }
+  }
+
   /**
    * POST /assets/:id/live-video
    * Attach the MOV/MP4 companion video to an existing image asset, marking it
@@ -383,5 +570,15 @@ export class AssetsController {
     if (!file) throw new NotFoundException('No video file provided');
     const asset = await this.assetsService.attachLivePhotoVideo(id, req.user.id, file);
     return serializeAsset(asset);
+  }
+
+  @Post(':id/live-video-error')
+  async reportLiveVideoError(
+    @Param('id') id: string,
+    @Body() body: { code: string; message: string },
+    @Request() req: { user: User },
+  ) {
+    console.warn('[LivePhoto] extraction error for asset ' + id + ': ' + body.code + ' — ' + body.message);
+    return { received: true };
   }
 }
