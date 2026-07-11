@@ -28,7 +28,25 @@ export interface PaginatedAssets {
 
 const HEIC_EXTS = new Set(['.heic', '.heif', '.avif']);
 const IMAGE_EXTS = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.tiff', '.tif', '.svg']);
-const VIDEO_EXTS = new Set(['.mp4', '.mov', '.avi', '.mkv', '.webm', '.m4v', '.3gp', '.wmv']);
+const VIDEO_EXTS = new Set([
+  // iPhone / Android originals
+  '.mp4', '.mov', '.m4v', '.3gp', '.3g2',
+  // Common desktop/camera
+  '.avi', '.mkv', '.webm', '.wmv', '.flv', '.f4v',
+  // MPEG family
+  '.mpg', '.mpeg', '.mp2', '.mpe', '.mpv',
+  // AVCHD / Sony / Panasonic cameras
+  '.mts', '.m2ts', '.ts', '.mxf',
+  // Other containers
+  '.ogv', '.ogg', '.rm', '.rmvb', '.vob',
+  '.asf', '.divx', '.xvid', '.dv',
+]);
+
+
+function cleanFileName(name: string): string {
+  const idx = name.indexOf('_o_');
+  return idx >= 0 ? name.slice(idx + 3) : name;
+}
 
 function detectAssetType(mimeType: string, fileName?: string): AssetType {
   if (mimeType.startsWith('image/')) return AssetType.IMAGE;
@@ -45,14 +63,30 @@ function detectMimeType(mimeType: string, fileName?: string): string {
   if (mimeType && mimeType !== 'application/octet-stream') return mimeType;
   if (fileName) {
     const ext = path.extname(fileName).toLowerCase();
+    // Images
     if (ext === '.heic' || ext === '.heif') return 'image/heic';
     if (ext === '.avif') return 'image/avif';
     if (ext === '.jpg' || ext === '.jpeg') return 'image/jpeg';
     if (ext === '.png') return 'image/png';
     if (ext === '.gif') return 'image/gif';
     if (ext === '.webp') return 'image/webp';
-    if (ext === '.mp4') return 'video/mp4';
+    if (ext === '.bmp') return 'image/bmp';
+    if (ext === '.tiff' || ext === '.tif') return 'image/tiff';
+    // Videos
+    if (ext === '.mp4' || ext === '.m4v' || ext === '.mp4v') return 'video/mp4';
     if (ext === '.mov') return 'video/quicktime';
+    if (ext === '.avi') return 'video/x-msvideo';
+    if (ext === '.mkv') return 'video/x-matroska';
+    if (ext === '.webm') return 'video/webm';
+    if (ext === '.wmv') return 'video/x-ms-wmv';
+    if (ext === '.flv' || ext === '.f4v') return 'video/x-flv';
+    if (ext === '.mpg' || ext === '.mpeg' || ext === '.mpe' || ext === '.mpv') return 'video/mpeg';
+    if (ext === '.3gp' || ext === '.3g2') return 'video/3gpp';
+    if (ext === '.mts' || ext === '.m2ts' || ext === '.ts') return 'video/mp2t';
+    if (ext === '.ogv' || ext === '.ogg') return 'video/ogg';
+    if (ext === '.rm' || ext === '.rmvb') return 'video/x-realmedia';
+    if (ext === '.asf') return 'video/x-ms-asf';
+    if (ext === '.mxf') return 'video/mxf';
   }
   return mimeType;
 }
@@ -77,8 +111,25 @@ export class AssetsService {
     ownerId: string,
     file: Express.Multer.File,
     fileCreatedAt?: string,
+    deviceAssetId?: string,
+    locationLat?: number,
+    locationLng?: number,
+    isLivePhoto?: boolean,
   ): Promise<Asset> {
     const checksum = computeChecksum(file.path);
+
+    // Dedup by deviceAssetId first — iOS re-exports videos with different
+    // metadata each session, changing the checksum. Without this, every app
+    // open creates a duplicate on the server.
+    if (deviceAssetId) {
+      const byDevice = await this.prisma.asset.findFirst({
+        where: { deviceAssetId, ownerId, isDeleted: false },
+      });
+      if (byDevice) {
+        fs.unlinkSync(file.path);
+        throw new ConflictException('Asset already exists in your library');
+      }
+    }
 
     const existing = await this.prisma.asset.findFirst({
       where: { checksum, ownerId },
@@ -119,12 +170,18 @@ export class AssetsService {
         data: {
           ownerId,
           originalPath: s3Key,   // S3 key — no leading '/'
-          fileName: file.originalname,
+          fileName: cleanFileName(file.originalname),
           fileSizeBytes: BigInt(file.size),
           mimeType: resolvedMime,
           checksum,
           type: assetType,
           fileCreatedAt: createdAt,
+          deviceAssetId,
+          isLivePhoto: isLivePhoto ?? false,
+          // GPS from mobile Photos framework (more reliable than EXIF on iOS)
+          ...(locationLat != null && locationLng != null
+            ? { locationLat, locationLng }
+            : {}),
         },
       });
     } catch (err: any) {
@@ -149,9 +206,65 @@ export class AssetsService {
     return asset;
   }
 
-  async findAll(ownerId: string, page = 1, limit = 50): Promise<PaginatedAssets> {
+
+  async findLivePhotosMissingVideo(ownerId: string): Promise<{ id: string; deviceAssetId: string | null }[]> {
+    const assets = await this.prisma.asset.findMany({
+      where: {
+        ownerId,
+        isLivePhoto: true,
+        isDeleted: false,
+        livePhotoVideoPath: null,
+      },
+      select: { id: true, deviceAssetId: true },
+    });
+    return assets;
+  }
+
+  async getDeviceAssetIds(ownerId: string): Promise<{ deviceIds: Record<string, string> }> {
+    const assets = await this.prisma.asset.findMany({
+      where: {
+        ownerId,
+        isDeleted: false,
+        deviceAssetId: { not: null },
+      },
+      select: { id: true, deviceAssetId: true },
+    });
+    const deviceIds: Record<string, string> = {};
+    for (const a of assets) {
+      if (a.deviceAssetId) deviceIds[a.deviceAssetId] = a.id;
+    }
+    return { deviceIds };
+  }
+
+  async removeDuplicatesByDeviceId(ownerId: string): Promise<{ removed: number }> {
+    const assets = await this.prisma.asset.findMany({
+      where: { ownerId, isDeleted: false, deviceAssetId: { not: null } },
+      select: { id: true, deviceAssetId: true, createdAt: true },
+      orderBy: { createdAt: 'asc' },
+    });
+    const seen = new Map<string, string>();
+    const toDelete: string[] = [];
+    for (const a of assets) {
+      if (!a.deviceAssetId) continue;
+      if (seen.has(a.deviceAssetId)) {
+        toDelete.push(a.id);
+      } else {
+        seen.set(a.deviceAssetId, a.id);
+      }
+    }
+    if (toDelete.length > 0) {
+      await this.prisma.asset.updateMany({
+        where: { id: { in: toDelete } },
+        data: { isDeleted: true },
+      });
+    }
+    return { removed: toDelete.length };
+  }
+
+  async findAll(ownerId: string, page = 1, limit = 50, isLivePhoto?: boolean): Promise<PaginatedAssets> {
     const skip = (page - 1) * limit;
-    const where = { ownerId, isDeleted: false, isArchived: false };
+    const where: any = { ownerId, isDeleted: false, isArchived: false };
+    if (isLivePhoto === true) where.isLivePhoto = true;
     const [assets, total] = await this.prisma.$transaction([
       this.prisma.asset.findMany({ where, orderBy: { fileCreatedAt: 'desc' }, skip, take: limit }),
       this.prisma.asset.count({ where }),
@@ -174,6 +287,17 @@ export class AssetsService {
     return asset;
   }
 
+  async updateLocation(id: string, ownerId: string, lat: number, lng: number): Promise<Asset> {
+    await this.findOne(id, ownerId);
+    const asset = await this.prisma.asset.update({
+      where: { id },
+      data: { locationLat: lat, locationLng: lng },
+    });
+    // Kick off reverse-geocoding if not already done
+    await this.queueService.enqueueGeocode(id, lat, lng);
+    return asset;
+  }
+
   async toggleFavorite(id: string, ownerId: string): Promise<Asset> {
     const asset = await this.findOne(id, ownerId);
     return this.prisma.asset.update({
@@ -188,6 +312,47 @@ export class AssetsService {
       where: { id },
       data: { isArchived: !asset.isArchived },
     });
+  }
+
+  async updateCaption(id: string, ownerId: string, caption: string): Promise<Asset> {
+    await this.findOne(id, ownerId);
+    return this.prisma.asset.update({
+      where: { id },
+      data: { caption },
+    });
+  }
+
+  async updateMetadata(id: string, ownerId: string, data: { fileCreatedAt?: string; locationLat?: number; locationLng?: number }): Promise<Asset> {
+    await this.findOne(id, ownerId);
+    const updateData: any = {};
+    if (data.fileCreatedAt) updateData.fileCreatedAt = new Date(data.fileCreatedAt);
+    if (data.locationLat !== undefined && data.locationLng !== undefined) {
+      updateData.locationLat = data.locationLat;
+      updateData.locationLng = data.locationLng;
+      await this.queueService.enqueueGeocode(id, data.locationLat, data.locationLng);
+    }
+    return this.prisma.asset.update({ where: { id }, data: updateData });
+  }
+
+  async batchUpdateMetadata(ownerId: string, body: { assetIds: string[]; fileCreatedAt?: string; locationLat?: number; locationLng?: number }): Promise<{ updated: number }> {
+    const assets = await this.prisma.asset.findMany({
+      where: { id: { in: body.assetIds }, ownerId },
+      select: { id: true },
+    });
+    const validIds = assets.map(a => a.id);
+    const updateData: any = {};
+    if (body.fileCreatedAt) updateData.fileCreatedAt = new Date(body.fileCreatedAt);
+    if (body.locationLat !== undefined && body.locationLng !== undefined) {
+      updateData.locationLat = body.locationLat;
+      updateData.locationLng = body.locationLng;
+    }
+    await this.prisma.asset.updateMany({ where: { id: { in: validIds } }, data: updateData });
+    if (body.locationLat !== undefined && body.locationLng !== undefined) {
+      for (const id of validIds) {
+        await this.queueService.enqueueGeocode(id, body.locationLat!, body.locationLng!);
+      }
+    }
+    return { updated: validIds.length };
   }
 
   async findVideos(ownerId: string, page = 1, limit = 50, month?: string): Promise<PaginatedAssets> {
@@ -407,6 +572,76 @@ export class AssetsService {
     return this.prisma.assetJobStatus.findUnique({ where: { assetId: id } });
   }
 
+  async getSyncStatus(ownerId: string) {
+    const totalAssets = await this.prisma.asset.count({
+      where: { ownerId, isDeleted: false },
+    });
+
+    const statuses = await this.prisma.assetJobStatus.findMany({
+      where: { asset: { ownerId, isDeleted: false } },
+      select: {
+        thumbnailDoneAt: true,
+        metadataDoneAt: true,
+        clipEmbeddedAt: true,
+        faceDetectedAt: true,
+        sceneTaggedAt: true,
+        geocodeDoneAt: true,
+        transcodeDoneAt: true,
+        ocrDoneAt: true,
+        pHashDoneAt: true,
+      },
+    });
+
+    const videoCount = await this.prisma.asset.count({
+      where: { ownerId, isDeleted: false, type: 'VIDEO' },
+    });
+
+    let thumbnails = 0;
+    let metadata = 0;
+    let clipEmbeddings = 0;
+    let faceDetection = 0;
+    let sceneTags = 0;
+    let geocoding = 0;
+    let transcoding = 0;
+    let ocr = 0;
+    let pHash = 0;
+
+    for (const s of statuses) {
+      if (s.thumbnailDoneAt) thumbnails++;
+      if (s.metadataDoneAt) metadata++;
+      if (s.clipEmbeddedAt) clipEmbeddings++;
+      if (s.faceDetectedAt) faceDetection++;
+      if (s.sceneTaggedAt) sceneTags++;
+      if (s.geocodeDoneAt) geocoding++;
+      if (s.transcodeDoneAt) transcoding++;
+      if (s.ocrDoneAt) ocr++;
+      if (s.pHashDoneAt) pHash++;
+    }
+
+    const allDone = thumbnails === totalAssets
+      && metadata === totalAssets
+      && clipEmbeddings === totalAssets
+      && faceDetection === totalAssets
+      && sceneTags === totalAssets
+      && ocr === totalAssets
+      && pHash === totalAssets;
+
+    return {
+      totalAssets,
+      videoCount,
+      thumbnails: { done: thumbnails, total: totalAssets },
+      metadata: { done: metadata, total: totalAssets },
+      clipEmbeddings: { done: clipEmbeddings, total: totalAssets },
+      faceDetection: { done: faceDetection, total: totalAssets },
+      sceneTags: { done: sceneTags, total: totalAssets },
+      geocoding: { done: geocoding, total: totalAssets },
+      transcoding: { done: transcoding, total: videoCount },
+      ocr: { done: ocr, total: totalAssets },
+      pHash: { done: pHash, total: totalAssets },
+      allDone,
+    };
+  }
+
   async serveThumbnail(
     id: string,
     ownerId: string,
@@ -459,14 +694,20 @@ export class AssetsService {
    * that do NOT yet exist in the user's library. The mobile client uses this
    * to skip files that have already been uploaded (deduplication).
    */
-  async checkHashes(ownerId: string, checksums: string[]): Promise<string[]> {
-    if (!checksums.length) return [];
-    const existing = await this.prisma.asset.findMany({
+  async checkHashes(
+    ownerId: string,
+    checksums: string[],
+  ): Promise<{ missing: string[]; existing: { checksum: string; id: string }[] }> {
+    if (!checksums.length) return { missing: [], existing: [] };
+    const found = await this.prisma.asset.findMany({
       where: { ownerId, checksum: { in: checksums } },
-      select: { checksum: true },
+      select: { checksum: true, id: true },
     });
-    const existingSet = new Set(existing.map((a) => a.checksum));
-    return checksums.filter((c) => !existingSet.has(c));
+    const foundSet = new Set(found.map((a) => a.checksum));
+    return {
+      missing: checksums.filter((c) => !foundSet.has(c)),
+      existing: found.map((a) => ({ checksum: a.checksum, id: a.id })),
+    };
   }
 
   // ─── Phase 5: Resumable chunked uploads ────────────────────────────────────
@@ -609,7 +850,7 @@ export class AssetsService {
         data: {
           ownerId: userId,
           originalPath: s3Key,   // S3 key
-          fileName: session.fileName,
+          fileName: cleanFileName(session.fileName),
           fileSizeBytes: session.fileSize,
           mimeType: resolvedMime,
           checksum: session.checksum,

@@ -206,7 +206,7 @@
           on:click={() => onTileClick(asset, i)} role="button" tabindex="0"
           on:keydown={(e) => e.key === 'Enter' && onTileClick(asset, i)}>
           {#if asset.thumbnailSmallPath}
-            <img src={api.assets.thumbnailUrl(asset.id)} alt={asset.fileName} loading="lazy" />
+            <img src={api.assets.thumbnailUrl(asset.id, asset.updatedAt)} alt={asset.fileName} loading="lazy" />
             <div class="video-icon">▶</div>
           {:else}
             <div class="placeholder-video">🎬</div>
@@ -227,6 +227,14 @@
         </div>
       {/each}
     </div>
+
+    {#if totalPages > 1}
+      <div class="pagination">
+        <button class="page-btn" disabled={pgNum <= 1} on:click={() => { pgNum--; loadVideos(); }}>← Previous</button>
+        <span class="page-info">Page {pgNum} of {totalPages}</span>
+        <button class="page-btn" disabled={pgNum >= totalPages} on:click={() => { pgNum++; loadVideos(); }}>Next →</button>
+      </div>
+    {/if}
   {/if}
 </div>
 

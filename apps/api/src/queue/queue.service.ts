@@ -45,6 +45,14 @@ export class QueueService {
         attempts: 3,
         backoff: { type: 'exponential', delay: 3000 },
       }),
+      this.mlQueue.add('ocr', { assetId, imagePath: thumbnailPath || originalPath }, {
+        attempts: 2,
+        backoff: { type: 'exponential', delay: 3000 },
+      }),
+      this.mlQueue.add('phash', { assetId, imagePath: thumbnailPath || originalPath }, {
+        attempts: 2,
+        backoff: { type: 'exponential', delay: 3000 },
+      }),
     ]);
   }
 

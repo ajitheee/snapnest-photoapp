@@ -1,14 +1,51 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import { goto } from '$app/navigation';
   import { api } from '$lib/api';
+  import type { SyncStatus } from '$lib/api';
   import { isAuthenticated } from '$lib/stores';
+
+  let syncStatus: SyncStatus | null = null;
+  let syncLoading = true;
+  let syncInterval: ReturnType<typeof setInterval> | null = null;
+
+  async function loadSyncStatus() {
+    try {
+      syncStatus = await api.assets.syncStatus();
+    } catch { /* ignore */ }
+    finally { syncLoading = false; }
+  }
 
   interface UploadFile {
     file: File;
     status: 'pending' | 'uploading' | 'done' | 'error' | 'duplicate';
     error?: string;
     progress: number;
+    isLivePair?: boolean;   // this MOV will be paired with the matching image
+    pairedWith?: string;    // base name of the paired image file
+  }
+
+  const IMAGE_EXTS = new Set(['.heic', '.heif', '.jpg', '.jpeg', '.png', '.webp', '.avif']);
+  const LIVE_VIDEO_EXTS = new Set(['.mov', '.mp4']);
+
+  function getBaseName(name: string): string {
+    return name.replace(/\.[^.]+$/, '').toLowerCase();
+  }
+
+  function detectLivePairs(all: UploadFile[]): UploadFile[] {
+    const imageMap = new Map<string, UploadFile>();
+    for (const f of all) {
+      const ext = '.' + (f.file.name.split('.').pop() ?? '').toLowerCase();
+      if (IMAGE_EXTS.has(ext)) imageMap.set(getBaseName(f.file.name), f);
+    }
+    return all.map(f => {
+      const ext = '.' + (f.file.name.split('.').pop() ?? '').toLowerCase();
+      if (LIVE_VIDEO_EXTS.has(ext)) {
+        const base = getBaseName(f.file.name);
+        if (imageMap.has(base)) return { ...f, isLivePair: true, pairedWith: base };
+      }
+      return f;
+    });
   }
 
   let files: UploadFile[] = [];
@@ -19,7 +56,14 @@
   onMount(() => {
     if (!$isAuthenticated) {
       goto('/');
+      return;
     }
+    loadSyncStatus();
+    syncInterval = setInterval(loadSyncStatus, 5000);
+  });
+
+  onDestroy(() => {
+    if (syncInterval) clearInterval(syncInterval);
   });
 
   function addFiles(newFiles: FileList | File[]) {
@@ -27,14 +71,8 @@
     const toAdd = arr.filter(
       (f) => !files.some((existing) => existing.file.name === f.name && existing.file.size === f.size)
     );
-    files = [
-      ...files,
-      ...toAdd.map((f) => ({
-        file: f,
-        status: 'pending' as const,
-        progress: 0,
-      })),
-    ];
+    const newItems = toAdd.map((f) => ({ file: f, status: 'pending' as const, progress: 0 }));
+    files = detectLivePairs([...files, ...newItems]);
   }
 
   function handleDrop(e: DragEvent) {
@@ -67,16 +105,39 @@
 
     uploading = true;
 
-    for (const item of pending) {
+    // Build a map of base name → uploaded asset id for live photo pairing
+    const uploadedImages = new Map<string, string>();
+
+    // Upload images first, then live video companions
+    const images = pending.filter(f => !f.isLivePair);
+    const livePairs = pending.filter(f => f.isLivePair);
+
+    for (const item of [...images, ...livePairs]) {
       item.status = 'uploading';
       item.progress = 0;
-      files = files; // trigger reactivity
+      files = files;
 
       try {
         const fileCreatedAt = new Date(item.file.lastModified).toISOString();
-        await api.assets.upload(item.file, fileCreatedAt);
-        item.status = 'done';
-        item.progress = 100;
+
+        if (item.isLivePair && item.pairedWith) {
+          // Attach as live photo companion to the previously uploaded image
+          const parentId = uploadedImages.get(item.pairedWith);
+          if (parentId) {
+            await api.assets.attachLiveVideo(parentId, item.file);
+            item.status = 'done';
+            item.progress = 100;
+            item.error = undefined;
+          } else {
+            item.status = 'error';
+            item.error = 'Parent image not uploaded yet';
+          }
+        } else {
+          const asset = await api.assets.upload(item.file, fileCreatedAt);
+          uploadedImages.set(getBaseName(item.file.name), asset.id);
+          item.status = 'done';
+          item.progress = 100;
+        }
       } catch (e) {
         const msg = e instanceof Error ? e.message : 'Upload failed';
         if (msg.toLowerCase().includes('already exists')) {
@@ -87,7 +148,7 @@
           item.error = msg;
         }
       }
-      files = files; // trigger reactivity
+      files = files;
     }
 
     uploading = false;
@@ -167,7 +228,23 @@
   .drop-sub {
     color: var(--text-muted);
     font-size: 0.9rem;
-    margin-bottom: 1.5rem;
+    margin-bottom: 0.5rem;
+  }
+  .live-photo-hint {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.4rem 0.75rem;
+    margin-bottom: 1rem;
+    max-width: 400px;
+  }
+  .live-photo-hint code {
+    font-family: monospace;
+    background: var(--surface);
+    padding: 0 3px;
+    border-radius: 3px;
   }
 
   .browse-btn {
@@ -323,6 +400,79 @@
     border-radius: 1px;
     transition: width 0.2s;
   }
+
+  /* Sync status panel */
+  .sync-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1rem 1.25rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .sync-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.75rem;
+  }
+
+  .sync-title {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--text);
+  }
+
+  .sync-summary {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+  }
+
+  .sync-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .sync-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .sync-label {
+    font-size: 0.8rem;
+    color: var(--text-2);
+    min-width: 110px;
+    flex-shrink: 0;
+  }
+
+  .sync-bar {
+    flex: 1;
+    height: 6px;
+    background: var(--border);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+
+  .sync-fill {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 3px;
+    transition: width 0.4s ease;
+  }
+
+  .sync-fill.complete {
+    background: #16a34a;
+  }
+
+  .sync-count {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    min-width: 50px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
 </style>
 
 <div class="page">
@@ -330,6 +480,37 @@
     <h2>Upload Photos</h2>
     <a class="back-link" href="/photos">&larr; Back to photos</a>
   </div>
+
+  {#if syncStatus && syncStatus.totalAssets > 0}
+    <div class="sync-panel">
+      <div class="sync-header">
+        <span class="sync-title">
+          {syncStatus.allDone ? '✓ Processing Complete' : '⟳ Processing Status'}
+        </span>
+        <span class="sync-summary">{syncStatus.totalAssets} asset{syncStatus.totalAssets !== 1 ? 's' : ''}</span>
+      </div>
+      <div class="sync-grid">
+        {#each [
+          { label: 'Thumbnails', item: syncStatus.thumbnails },
+          { label: 'Metadata', item: syncStatus.metadata },
+          { label: 'CLIP Embeddings', item: syncStatus.clipEmbeddings },
+          { label: 'Face Detection', item: syncStatus.faceDetection },
+          { label: 'Scene Tags', item: syncStatus.sceneTags },
+          { label: 'Geocoding', item: syncStatus.geocoding },
+          ...(syncStatus.videoCount > 0 ? [{ label: 'Transcoding', item: syncStatus.transcoding }] : []),
+        ] as row}
+          <div class="sync-row">
+            <span class="sync-label">{row.label}</span>
+            <div class="sync-bar">
+              <div class="sync-fill" class:complete={row.item.done === row.item.total && row.item.total > 0}
+                style="width: {row.item.total > 0 ? (row.item.done / row.item.total * 100) : 0}%"></div>
+            </div>
+            <span class="sync-count">{row.item.done}/{row.item.total}</span>
+          </div>
+        {/each}
+      </div>
+    </div>
+  {/if}
 
   <!-- svelte-ignore a11y-no-static-element-interactions -->
   <div
@@ -350,6 +531,7 @@
     <span class="drop-icon">&#128247;</span>
     <div class="drop-title">Drop photos and videos here</div>
     <div class="drop-sub">Supports JPEG, PNG, HEIC, MP4, MOV and more</div>
+    <div class="live-photo-hint"><strong>iPhone Live Photos:</strong> select both the image <em>and</em> its companion <code>.MOV</code> together. For automatic pairing, use the SnapNest app.</div>
     <span class="browse-btn">Browse files</span>
   </div>
 
@@ -378,11 +560,14 @@
       {#each files as item, i (item.file.name + item.file.size)}
         <div class="file-row">
           <span class="file-icon">
-            {item.file.type.startsWith('video/') ? '&#127916;' : '&#128247;'}
+            {item.isLivePair ? '&#9654;' : item.file.type.startsWith('video/') ? '&#127916;' : '&#128247;'}
           </span>
 
           <div class="file-info">
-            <div class="file-name">{item.file.name}</div>
+            <div class="file-name">
+              {item.file.name}
+              {#if item.isLivePair}<span style="font-size:0.72rem;color:#22c55e;margin-left:0.4rem">&#9654; Live</span>{/if}
+            </div>
             <div class="file-meta">{formatSize(item.file.size)}</div>
             {#if item.status === 'uploading'}
               <div class="progress-bar">

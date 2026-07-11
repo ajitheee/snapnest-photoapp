@@ -39,6 +39,16 @@ export class AlbumsController {
     return this.smartAlbumsService.getSmartAlbums(req.user.id);
   }
 
+  @Get('explore')
+  getAlbumExplore(@Request() req: { user: User }) {
+    return this.smartAlbumsService.getAlbumExplore(req.user.id, req.user.email, this.albumsService);
+  }
+
+  @Get('shared-with-me')
+  getSharedWithMe(@Request() req: { user: User }) {
+    return this.albumsService.findSharedWithMe(req.user.email);
+  }
+
   @Post()
   create(@Body() dto: CreateAlbumDto, @Request() req: { user: User }) {
     return this.albumsService.create(req.user.id, dto);
@@ -100,5 +110,79 @@ export class AlbumsController {
   async removeAssets(@Param('id') id: string, @Body() dto: AddAssetsDto, @Request() req: { user: User }) {
     const album = await this.albumsService.removeAssets(id, req.user.id, dto);
     return serializeAlbum(album);
+  }
+
+  @Get(':id/shares')
+  getShareList(@Param('id') id: string, @Request() req: { user: User }) {
+    return this.albumsService.getShareList(id, req.user.id);
+  }
+
+  @Post(':id/share')
+  shareWithEmail(
+    @Param('id') id: string,
+    @Body() body: { email: string },
+    @Request() req: { user: User },
+  ) {
+    return this.albumsService.shareWithEmail(id, req.user.id, body.email);
+  }
+
+  @Delete(':id/share/:email')
+  @HttpCode(HttpStatus.OK)
+  unshareWithEmail(
+    @Param('id') id: string,
+    @Param('email') email: string,
+    @Request() req: { user: User },
+  ) {
+    return this.albumsService.unshareWithEmail(id, req.user.id, email);
+  }
+
+  // ── Folder management ─────────────────────────────────────────────────────
+
+  @Get('folders')
+  listFolders(@Request() req: { user: User }) {
+    return this.albumsService.listFolders(req.user.id);
+  }
+
+  @Get('organized')
+  listWithFolders(@Request() req: { user: User }) {
+    return this.albumsService.findAllWithFolders(req.user.id);
+  }
+
+  @Post('folders')
+  createFolder(@Body() body: { name: string; parentId?: string }, @Request() req: { user: User }) {
+    return this.albumsService.createFolder(req.user.id, body.name, body.parentId);
+  }
+
+  @Patch('folders/:id')
+  updateFolder(
+    @Param('id') id: string,
+    @Body() body: { name?: string; parentId?: string | null; sortOrder?: number },
+    @Request() req: { user: User },
+  ) {
+    return this.albumsService.updateFolder(id, req.user.id, body);
+  }
+
+  @Delete('folders/:id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  deleteFolder(@Param('id') id: string, @Request() req: { user: User }) {
+    return this.albumsService.deleteFolder(id, req.user.id);
+  }
+
+  @Patch(':id/move')
+  moveToFolder(
+    @Param('id') id: string,
+    @Body() body: { folderId: string | null },
+    @Request() req: { user: User },
+  ) {
+    return this.albumsService.moveAlbumToFolder(id, req.user.id, body.folderId);
+  }
+
+  @Patch(':id/sort')
+  updateSort(
+    @Param('id') id: string,
+    @Body() body: { sortOrder: number },
+    @Request() req: { user: User },
+  ) {
+    return this.albumsService.updateAlbumSortOrder(id, req.user.id, body.sortOrder);
   }
 }

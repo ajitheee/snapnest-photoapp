@@ -1,8 +1,11 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, ConflictException, NotFoundException } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import * as fs from 'fs';
+import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
+
+const SALT_ROUNDS = 10;
 
 @Injectable()
 export class AdminService {
@@ -15,6 +18,33 @@ export class AdminService {
     @InjectQueue('transcode') private readonly transcodeQueue: Queue,
     @InjectQueue('ml')        private readonly mlQueue: Queue,
   ) {}
+
+  async createUser(dto: { email: string; password: string; name: string; isAdmin?: boolean }) {
+    const existing = await this.prisma.user.findUnique({ where: { email: dto.email } });
+    if (existing) throw new ConflictException('Email already registered');
+    const passwordHash = await bcrypt.hash(dto.password, SALT_ROUNDS);
+    const user = await this.prisma.user.create({
+      data: {
+        email: dto.email,
+        name: dto.name,
+        passwordHash,
+        isAdmin: dto.isAdmin ?? false,
+      },
+    });
+    const { passwordHash: _, ...safe } = user;
+    return {
+      ...safe,
+      storageLimitBytes: safe.storageLimitBytes?.toString() ?? null,
+      storageUsedBytes: safe.storageUsedBytes.toString(),
+    };
+  }
+
+  async resetUserPassword(id: string, newPassword: string) {
+    const user = await this.prisma.user.findUnique({ where: { id } });
+    if (!user) throw new NotFoundException('User not found');
+    const passwordHash = await bcrypt.hash(newPassword, SALT_ROUNDS);
+    await this.prisma.user.update({ where: { id }, data: { passwordHash } });
+  }
 
   async getUsers(page = 1, limit = 50) {
     const skip = (page - 1) * limit;
@@ -151,4 +181,33 @@ export class AdminService {
       },
     };
   }
+  async backfillLivePhotoMetadata(): Promise<{ queued: number }> {
+    const assets = await this.prisma.asset.findMany({
+      where: {
+        isDeleted: false,
+        OR: [
+          { mimeType: 'image/heic' },
+          { mimeType: 'image/heif' },
+          { mimeType: 'image/jpeg' },
+          { mimeType: 'video/quicktime' },
+          { fileName: { endsWith: '.HEIC' } },
+          { fileName: { endsWith: '.heic' } },
+          { fileName: { endsWith: '.JPG' } },
+          { fileName: { endsWith: '.jpg' } },
+          { fileName: { endsWith: '.JPEG' } },
+          { fileName: { endsWith: '.jpeg' } },
+          { fileName: { endsWith: '.MOV' } },
+          { fileName: { endsWith: '.mov' } },
+        ],
+      },
+      select: { id: true, originalPath: true },
+    });
+    for (const asset of assets) {
+      await this.metadataQueue.add('extract', { assetId: asset.id, filePath: asset.originalPath }, {
+        attempts: 2, backoff: { type: 'fixed', delay: 2000 },
+      });
+    }
+    return { queued: assets.length };
+  }
+
 }

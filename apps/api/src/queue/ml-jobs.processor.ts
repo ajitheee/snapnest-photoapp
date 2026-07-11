@@ -6,7 +6,7 @@ import { PrismaService } from '../prisma/prisma.service';
 
 const ML_URL = process.env.ML_SERVICE_URL || 'http://ml:3003';
 
-@Processor('ml')
+@Processor('ml', { concurrency: 1 })
 export class MlJobsProcessor extends WorkerHost {
   private readonly logger = new Logger(MlJobsProcessor.name);
 
@@ -20,6 +20,8 @@ export class MlJobsProcessor extends WorkerHost {
       case 'face-detect':  return this.faceDetect(job.data);
       case 'scene-tag':    return this.sceneTag(job.data);
       case 'geocode':      return this.geocode(job.data);
+      case 'ocr':          return this.ocr(job.data);
+      case 'phash':        return this.phash(job.data);
       default:
         this.logger.warn(`Unknown ML job: ${job.name}`);
     }
@@ -137,5 +139,65 @@ export class MlJobsProcessor extends WorkerHost {
     });
 
     this.logger.log(`Geocode done for ${assetId}: ${city}, ${state}, ${country}`);
+  }
+
+  private async ocr(data: { assetId: string; imagePath: string }) {
+    const { assetId, imagePath } = data;
+    this.logger.log(`OCR for ${assetId}`);
+
+    try {
+      const res = await axios.post(`${ML_URL}/ocr`, { image_path: imagePath }, { timeout: 60000 });
+      const { text, confidence } = res.data;
+
+      if (text && text.trim().length > 0) {
+        await this.prisma.asset.update({
+          where: { id: assetId },
+          data: { ocrText: text.trim() },
+        });
+      }
+
+      await this.prisma.assetJobStatus.update({
+        where: { assetId },
+        data: { ocrDoneAt: new Date() },
+      });
+
+      this.logger.log(`OCR done for ${assetId}: ${text?.length || 0} chars (conf=${confidence})`);
+    } catch (err: any) {
+      this.logger.warn(`OCR failed for ${assetId}: ${err.message}`);
+      await this.prisma.assetJobStatus.update({
+        where: { assetId },
+        data: { ocrDoneAt: new Date() },
+      });
+    }
+  }
+
+  private async phash(data: { assetId: string; imagePath: string }) {
+    const { assetId, imagePath } = data;
+    this.logger.log(`pHash for ${assetId}`);
+
+    try {
+      const res = await axios.post(`${ML_URL}/phash`, { image_path: imagePath }, { timeout: 30000 });
+      const { hash } = res.data;
+
+      if (hash) {
+        await this.prisma.asset.update({
+          where: { id: assetId },
+          data: { perceptualHash: hash },
+        });
+      }
+
+      await this.prisma.assetJobStatus.update({
+        where: { assetId },
+        data: { pHashDoneAt: new Date() },
+      });
+
+      this.logger.log(`pHash done for ${assetId}: ${hash}`);
+    } catch (err: any) {
+      this.logger.warn(`pHash failed for ${assetId}: ${err.message}`);
+      await this.prisma.assetJobStatus.update({
+        where: { assetId },
+        data: { pHashDoneAt: new Date() },
+      });
+    }
   }
 }

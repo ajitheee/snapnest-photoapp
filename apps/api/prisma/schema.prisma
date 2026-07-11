@@ -16,16 +16,21 @@ model User {
   storageLimitBytes BigInt?
   storageUsedBytes  BigInt          @default(0)
   preferences       Json?
+  hiddenPin         String?
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
   assets            Asset[]
   albums            Album[]
+  albumFolders      AlbumFolder[]
+  albumShares       AlbumShare[] @relation("AlbumShareOwner")
+  sharedAlbums      AlbumShare[] @relation("AlbumShareReceiver")
   shareLinks        ShareLink[]
   people            Person[]
   smartAlbums       SmartAlbum[]
   deviceTokens      DeviceToken[]
   uploadSessions    UploadSession[]
   oauthIdentities   OauthIdentity[]
+  recaps            Recap[]
 
   @@map("users")
 }
@@ -57,7 +62,7 @@ model Asset {
   fileName           String
   fileSizeBytes      BigInt
   mimeType           String
-  checksum           String                      @unique
+  checksum           String
   type               AssetType
   fileCreatedAt      DateTime
   width              Int?
@@ -76,6 +81,18 @@ model Asset {
   // Live Photo / Motion Photo (iOS Live Photo or Google Motion Photo)
   isLivePhoto        Boolean                     @default(false)
   livePhotoVideoPath String?
+  appleContentId     String?   // Apple Live Photo Content Identifier (pairs HEIC + MOV automatically)
+  // Phase 8: Intelligence Foundation
+  caption            String?
+  ocrText            String?
+  perceptualHash     String?
+  // Live Photo effects
+  liveEffect           String?
+  liveEffectPath       String?
+  keyPhotoTimestampMs  Int?
+  // Photo / Video editing
+  editedPath         String?
+  editParams         Json?
   clipEmbedding      Unsupported("vector(512)")?
   createdAt          DateTime                    @default(now())
   updatedAt          DateTime                    @updatedAt
@@ -86,6 +103,7 @@ model Asset {
   shareLinks         ShareLink[]
   faces              Face[]
 
+  @@unique([ownerId, checksum])
   @@map("assets")
 }
 
@@ -111,6 +129,8 @@ model AssetJobStatus {
   clipEmbeddedAt  DateTime?
   faceDetectedAt  DateTime?
   sceneTaggedAt   DateTime?
+  ocrDoneAt       DateTime?
+  pHashDoneAt     DateTime?
   faceData        Json?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
@@ -126,12 +146,36 @@ model Album {
   description  String?
   coverAssetId String?
   coverAsset   Asset?       @relation("AlbumCover", fields: [coverAssetId], references: [id], onDelete: SetNull)
+  folderId     String?
+  folder       AlbumFolder? @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  sortOrder    Int          @default(0)
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
+  allowContributions Boolean @default(false)
   assets       AlbumAsset[]
   shareLinks   ShareLink[]
+  sharedWith   AlbumShare[]
+  comments     AlbumComment[]
+  likes        AlbumLike[]
+  activity     AlbumActivity[]
 
   @@map("albums")
+}
+
+model AlbumFolder {
+  id        String        @id @default(uuid())
+  ownerId   String
+  owner     User          @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  name      String
+  parentId  String?
+  parent    AlbumFolder?  @relation("FolderHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children  AlbumFolder[] @relation("FolderHierarchy")
+  sortOrder Int           @default(0)
+  albums    Album[]
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  @@map("album_folders")
 }
 
 model AlbumAsset {
@@ -143,6 +187,21 @@ model AlbumAsset {
 
   @@id([albumId, assetId])
   @@map("album_assets")
+}
+
+model AlbumShare {
+  id                String    @id @default(uuid())
+  albumId           String
+  album             Album     @relation(fields: [albumId], references: [id], onDelete: Cascade)
+  ownerId           String
+  owner             User      @relation("AlbumShareOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  sharedWithEmail   String
+  sharedWithId      String?
+  sharedWith        User?     @relation("AlbumShareReceiver", fields: [sharedWithId], references: [id], onDelete: SetNull)
+  createdAt         DateTime  @default(now())
+
+  @@unique([albumId, sharedWithEmail])
+  @@map("album_shares")
 }
 
 model ShareLink {
@@ -208,6 +267,18 @@ model SmartAlbum {
   @@map("smart_albums")
 }
 
+// ─── Phase 8: Intelligence Foundation ─────────────────────────────────────────
+
+model DuplicateGroup {
+  id        String   @id @default(uuid())
+  ownerId   String
+  assetIds  Json
+  status    String   @default("pending")
+  createdAt DateTime @default(now())
+
+  @@map("duplicate_groups")
+}
+
 // ─── Phase 5: Mobile & Sync ───────────────────────────────────────────────────
 
 /// FCM / APNs push tokens. One user → many devices.
@@ -244,6 +315,94 @@ model UploadSession {
   @@map("upload_sessions")
 }
 
+// ─── Phase 7: Weekly Recaps ───────────────────────────────────────────────────
+
+model Recap {
+  id          String   @id @default(uuid())
+  ownerId     String
+  owner       User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  weekStart   DateTime
+  weekEnd     DateTime
+  videoPath   String?
+  coverPath   String?
+  assetIds    Json
+  photoCount  Int
+  locationSummary String?
+  peopleSummary   String?
+  status      RecapStatus @default(PENDING)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([ownerId, weekStart])
+  @@map("recaps")
+}
+
+// ─── Phase 9: Family & Collaboration ─────────────────────────────────────────
+
+model AlbumComment {
+  id        String   @id @default(uuid())
+  albumId   String
+  album     Album    @relation(fields: [albumId], references: [id], onDelete: Cascade)
+  assetId   String?
+  userId    String
+  userName  String
+  text      String
+  createdAt DateTime @default(now())
+
+  @@map("album_comments")
+}
+
+model AlbumLike {
+  id        String   @id @default(uuid())
+  albumId   String
+  album     Album    @relation(fields: [albumId], references: [id], onDelete: Cascade)
+  assetId   String
+  userId    String
+  userName  String
+  createdAt DateTime @default(now())
+
+  @@unique([albumId, assetId, userId])
+  @@map("album_likes")
+}
+
+model AlbumActivity {
+  id        String   @id @default(uuid())
+  albumId   String
+  album     Album    @relation(fields: [albumId], references: [id], onDelete: Cascade)
+  userId    String
+  userName  String
+  action    String
+  assetId   String?
+  text      String?
+  createdAt DateTime @default(now())
+
+  @@map("album_activity")
+}
+
+model SharedLibrary {
+  id        String              @id @default(uuid())
+  name      String
+  ownerId   String
+  rules     Json?
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
+  members   SharedLibraryMember[]
+
+  @@map("shared_libraries")
+}
+
+model SharedLibraryMember {
+  id              String        @id @default(uuid())
+  sharedLibraryId String
+  sharedLibrary   SharedLibrary @relation(fields: [sharedLibraryId], references: [id], onDelete: Cascade)
+  userId          String
+  role            String        @default("member")
+  joinedAt        DateTime      @default(now())
+
+  @@unique([sharedLibraryId, userId])
+  @@map("shared_library_members")
+}
+
 // ─── Enums ────────────────────────────────────────────────────────────────────
 
 enum AssetType {
@@ -262,4 +421,11 @@ enum SmartAlbumType {
 enum DevicePlatform {
   IOS
   ANDROID
+}
+
+enum RecapStatus {
+  PENDING
+  GENERATING
+  READY
+  FAILED
 }

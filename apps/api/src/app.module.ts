@@ -18,6 +18,16 @@ import { MemoriesModule } from './memories/memories.module';
 // Phase 6 — Production Hardening
 import { AdminModule } from './admin/admin.module';
 import { MetricsModule } from './metrics/metrics.module';
+// Phase 7 — Weekly Recaps
+import { RecapModule } from './recap/recap.module';
+// Phase 8 — Intelligence Foundation
+import { DuplicatesModule } from './duplicates/duplicates.module';
+// Phase 9 — Organization & Privacy
+import { TripsModule } from './trips/trips.module';
+// Phase 10 — Delight Layer
+import { IntelligenceModule } from './intelligence/intelligence.module';
+// Server info endpoint
+import { ServerModule } from './server/server.module';
 
 @Module({
   imports: [
@@ -45,6 +55,15 @@ import { MetricsModule } from './metrics/metrics.module';
     // Phase 6
     AdminModule,
     MetricsModule,
+    // Phase 7
+    RecapModule,
+    // Phase 8
+    DuplicatesModule,
+    // Phase 9
+    TripsModule,
+    // Phase 10
+    IntelligenceModule,
+    ServerModule,
   ],
 })
 export class AppModule {}

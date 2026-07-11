@@ -21,6 +21,20 @@
   let editStorageLimit = '';
   let saving = false;
 
+  // Create user state
+  let showCreate = false;
+  let createEmail = '';
+  let createName = '';
+  let createPassword = '';
+  let createIsAdmin = false;
+  let creating = false;
+  let createError = '';
+
+  // Reset password state
+  let resetId: string | null = null;
+  let resetPassword = '';
+  let resetting = false;
+
   onMount(async () => {
     if (!$auth.user?.isAdmin) {
       goto('/photos');
@@ -90,6 +104,41 @@
       await loadUsers();
     } catch (e: any) {
       alert('Failed to delete: ' + e.message);
+    }
+  }
+
+  async function createUser() {
+    if (!createEmail.trim() || !createPassword.trim() || !createName.trim()) return;
+    creating = true; createError = '';
+    try {
+      await api.admin.createUser({
+        email: createEmail.trim(),
+        password: createPassword,
+        name: createName.trim(),
+        isAdmin: createIsAdmin,
+      });
+      showCreate = false;
+      createEmail = ''; createName = ''; createPassword = ''; createIsAdmin = false;
+      await loadUsers();
+    } catch (e: any) {
+      createError = e.message;
+    } finally {
+      creating = false;
+    }
+  }
+
+  async function doResetPassword(u: AdminUser) {
+    if (!resetPassword.trim()) return;
+    resetting = true;
+    try {
+      await api.admin.resetPassword(u.id, resetPassword);
+      resetId = null;
+      resetPassword = '';
+      alert(`Password reset for ${u.email}`);
+    } catch (e: any) {
+      alert('Failed to reset password: ' + e.message);
+    } finally {
+      resetting = false;
     }
   }
 
@@ -426,6 +475,34 @@
     </div>
 
   {:else if tab === 'users'}
+    <div style="display:flex;justify-content:flex-end;margin-bottom:0.75rem">
+      <button class="btn btn-primary" on:click={() => { showCreate = !showCreate; createError = ''; }}>
+        {showCreate ? '✕ Cancel' : '+ Create User'}
+      </button>
+    </div>
+
+    {#if showCreate}
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:1.2rem;margin-bottom:1.25rem;display:flex;flex-direction:column;gap:0.75rem">
+        <div style="font-size:0.9rem;font-weight:700;color:var(--text)">New User</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem">
+          <input class="edit-input" style="width:100%" placeholder="Full name" bind:value={createName} />
+          <input class="edit-input" style="width:100%" type="email" placeholder="Email address" bind:value={createEmail} />
+        </div>
+        <input class="edit-input" style="width:100%" type="password" placeholder="Password" bind:value={createPassword} />
+        <label style="font-size:0.82rem;display:flex;align-items:center;gap:0.4rem;color:var(--text-2)">
+          <input type="checkbox" bind:checked={createIsAdmin} /> Grant admin role
+        </label>
+        {#if createError}<div style="color:var(--error);font-size:0.83rem">{createError}</div>{/if}
+        <div style="display:flex;gap:0.5rem;justify-content:flex-end">
+          <button class="btn" on:click={() => { showCreate = false; createError = ''; }}>Cancel</button>
+          <button class="btn btn-primary" on:click={createUser}
+            disabled={creating || !createEmail.trim() || !createPassword.trim() || !createName.trim()}>
+            {creating ? 'Creating…' : 'Create User'}
+          </button>
+        </div>
+      </div>
+    {/if}
+
     <div class="table-wrap">
       <table>
         <thead>
@@ -505,8 +582,18 @@
                       {saving ? 'Saving…' : 'Save'}
                     </button>
                     <button class="btn" on:click={cancelEdit}>Cancel</button>
+                  {:else if resetId === u.id}
+                    <input class="edit-input" type="password" placeholder="New password"
+                      bind:value={resetPassword} style="width:130px" />
+                    <button class="btn btn-primary" on:click={() => doResetPassword(u)}
+                      disabled={resetting || !resetPassword.trim()}>
+                      {resetting ? '…' : 'Set'}
+                    </button>
+                    <button class="btn" on:click={() => { resetId = null; resetPassword = ''; }}>✕</button>
                   {:else}
                     <button class="btn" on:click={() => startEdit(u)}>Edit</button>
+                    <button class="btn" on:click={() => { resetId = u.id; resetPassword = ''; editingId = null; }}
+                      title="Reset password">⚿ Reset PW</button>
                     {#if u.id !== $auth.user?.id}
                       <button class="btn btn-danger" on:click={() => deleteUser(u)}>Delete</button>
                     {/if}

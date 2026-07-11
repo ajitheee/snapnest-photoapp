@@ -183,7 +183,7 @@
           on:click={() => onTileClick(asset, i)} role="button" tabindex="0"
           on:keydown={(e) => e.key === 'Enter' && onTileClick(asset, i)}>
           {#if asset.type !== 'OTHER'}
-            <img src={api.assets.thumbnailUrl(asset.id)} alt={asset.fileName} loading="lazy"
+            <img src={api.assets.thumbnailUrl(asset.id, asset.updatedAt)} alt={asset.fileName} loading="lazy"
               on:error={(e) => imgError(e)} />
             <div class="broken" style="display:none">&#128247;</div>
           {:else}

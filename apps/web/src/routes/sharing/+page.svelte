@@ -14,11 +14,19 @@
   let creating = false;
   let createError = '';
   let copied: string | null = null;
+  let appUrl = 'http://192.168.86.170:8090';
 
   onMount(async () => {
     if (!$isAuthenticated) { goto('/'); return; }
-    await Promise.all([load(), loadAlbums()]);
+    await Promise.all([load(), loadAlbums(), loadAppUrl()]);
   });
+
+  async function loadAppUrl() {
+    try {
+      const info = await api.server.info();
+      if (info?.appUrl) appUrl = info.appUrl;
+    } catch {}
+  }
 
   async function load() {
     loading = true; error = '';
@@ -52,9 +60,12 @@
     links = links.filter(l => l.id !== link.id);
   }
 
+  function shareUrl(token: string) {
+    return `${appUrl}/s/${token}`;
+  }
+
   function copyLink(token: string) {
-    const url = `${window.location.origin}/s/${token}`;
-    navigator.clipboard.writeText(url);
+    navigator.clipboard.writeText(shareUrl(token));
     copied = token;
     setTimeout(() => copied = null, 2000);
   }
@@ -156,7 +167,6 @@
   {:else}
     <div class="link-list">
       {#each links as link (link.id)}
-        {@const url = `${typeof window !== 'undefined' ? window.location.origin : ''}/s/${link.token}`}
         {@const isExpired = link.expiresAt ? new Date(link.expiresAt) < new Date() : false}
         <div class="link-card">
           <div class="link-top">
@@ -175,7 +185,7 @@
             <span>{link.viewCount} view{link.viewCount !== 1 ? 's' : ''}</span>
           </div>
           <div class="link-url-row">
-            <span class="link-url">{url}</span>
+            <span class="link-url">{shareUrl(link.token)}</span>
             <button class="copy-btn" class:copied={copied === link.token} on:click={() => copyLink(link.token)}>
               {copied === link.token ? 'Copied!' : 'Copy'}
             </button>

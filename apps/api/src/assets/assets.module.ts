@@ -2,6 +2,9 @@ import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { AssetsService } from './assets.service';
 import { AssetsController } from './assets.controller';
+import { HiddenController } from './hidden.controller';
+import { EditService } from './edit.service';
+import { LivePhotoEffectsService } from './live-photo-effects.service';
 import { TrashPurgeService } from './trash-purge.service';
 import { QueueService } from '../queue/queue.service';
 import { ThumbnailProcessor } from '../queue/thumbnail.processor';
@@ -22,6 +25,8 @@ import { MetricsModule } from '../metrics/metrics.module';
   ],
   providers: [
     AssetsService,
+    EditService,
+    LivePhotoEffectsService,
     TrashPurgeService,
     QueueService,
     ThumbnailProcessor,
@@ -29,7 +34,7 @@ import { MetricsModule } from '../metrics/metrics.module';
     TranscodeProcessor,
     MlJobsProcessor,
   ],
-  controllers: [AssetsController],
+  controllers: [AssetsController, HiddenController],
   exports: [AssetsService],
 })
 export class AssetsModule {}

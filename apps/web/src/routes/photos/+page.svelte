@@ -1,9 +1,10 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
+  import { page as pageStore } from '$app/stores';
   import { api } from '$lib/api';
   import { isAuthenticated } from '$lib/stores';
-  import type { Asset, MemoryYearGroup, MemoryAsset } from '$lib/api';
+  import type { Asset } from '$lib/api';
   import PhotoViewer from '$lib/PhotoViewer.svelte';
   import { settings } from '$lib/settings';
 
@@ -15,14 +16,9 @@
   const limit = 50;
   $: totalPages = Math.ceil(total / limit);
 
-  let viewerIndex = -1;
+  $: isLivePhotoFilter = $pageStore.url.searchParams.get('isLivePhoto') === 'true';
 
-  // Memories
-  let yearGroups: MemoryYearGroup[] = [];
-  let memoriesLoading = true;
-  let memoriesExpanded = true;
-  let memViewerAssets: MemoryAsset[] = [];
-  let memViewerIndex = -1;
+  let viewerIndex = -1;
 
   // Multi-select
   let selectMode = false;
@@ -32,27 +28,18 @@
 
   onMount(async () => {
     if (!$isAuthenticated) { goto('/'); return; }
-    const [assetsResult, memoriesResult] = await Promise.allSettled([
-      loadAssets(),
-      api.memories.get(),
-    ]);
-    if (memoriesResult.status === 'fulfilled') yearGroups = memoriesResult.value.yearGroups;
-    memoriesLoading = false;
+    await loadAssets();
   });
 
   async function loadAssets() {
     loading = true; error = '';
     try {
-      const result = await api.assets.list(page, limit);
+      const liveOnly = $pageStore.url.searchParams.get('isLivePhoto') === 'true';
+      const result = await api.assets.list(page, limit, liveOnly ? true : undefined);
       assets = result.assets; total = result.total;
     } catch (e) {
       error = e instanceof Error ? e.message : 'Failed to load photos';
     } finally { loading = false; }
-  }
-
-  function openMemory(group: MemoryYearGroup, idx: number) {
-    memViewerAssets = group.assets as MemoryAsset[];
-    memViewerIndex = idx;
   }
 
   async function prevPage() { if (page > 1) { page--; await loadAssets(); } }
@@ -95,9 +82,10 @@
     deleting = true;
     try {
       await Promise.all([...selected].map(id => api.assets.softDelete(id)));
-      assets = assets.filter(a => !selected.has(a.id));
-      total -= selected.size;
       selected = new Set();
+      selectMode = false;
+      // Reload from server so the grid is in sync with actual server state
+      await loadAssets();
     } catch (e) { alert('Delete failed'); }
     finally { deleting = false; }
   }
@@ -228,6 +216,13 @@
     border-radius: 6px; padding: 2px 7px;
     font-size: 0.68rem; font-weight: 700; color: #fff; letter-spacing: 0.05em;
   }
+  .live-badge-grid {
+    position: absolute; bottom: 0.45rem; left: 50%; transform: translateX(-50%);
+    background: rgba(0,0,0,0.6); backdrop-filter: blur(4px);
+    border-radius: 999px; padding: 2px 8px;
+    font-size: 0.65rem; font-weight: 700; color: #fff; letter-spacing: 0.06em;
+    white-space: nowrap;
+  }
 
   .check-badge {
     position: absolute; top: 0.45rem; left: 0.45rem;
@@ -275,70 +270,14 @@
     padding: 0.4rem 0.9rem; border-radius: 8px;
   }
 
-  /* ── Memories strip ── */
-  .memories-section {
-    margin-bottom: 2rem;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 16px;
-    padding: 1.1rem 1.25rem;
-    box-shadow: var(--shadow-xs);
-  }
-  .memories-header {
-    display: flex; align-items: center; gap: 0.6rem;
-    margin-bottom: 0.9rem; cursor: pointer; user-select: none;
-  }
-  .memories-title { font-size: 0.95rem; font-weight: 700; color: var(--text); }
-  .mem-badge {
-    background: linear-gradient(135deg, var(--accent), #8b5cf6);
-    color: #fff; font-size: 0.65rem; font-weight: 700;
-    padding: 0.15rem 0.5rem; border-radius: 20px;
-  }
-  .memories-subtitle { font-size: 0.8rem; color: var(--text-muted); }
-  .memories-toggle {
-    font-size: 0.73rem; font-weight: 500;
-    color: var(--accent); margin-left: auto;
-    background: var(--accent-light); padding: 0.2rem 0.55rem;
-    border-radius: 6px;
-  }
-  .memory-group { margin-bottom: 1.1rem; }
-  .memory-year-label {
-    font-size: 0.82rem; font-weight: 700; color: var(--text); margin-bottom: 0.5rem;
-  }
-  .memory-year-sub {
-    font-size: 0.75rem; color: var(--text-muted); font-weight: 400; margin-left: 0.4rem;
-  }
-  .memory-strip {
-    display: flex; gap: 7px; overflow-x: auto; padding-bottom: 4px;
-    scrollbar-width: thin; scrollbar-color: var(--border) transparent;
-  }
-  .memory-strip::-webkit-scrollbar { height: 4px; }
-  .memory-strip::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
-  .mem-thumb {
-    flex: 0 0 auto; width: 135px; height: 135px; border-radius: 12px;
-    overflow: hidden; background: var(--surface-2); cursor: pointer; position: relative;
-    transition: transform 0.2s, box-shadow 0.2s;
-  }
-  .mem-thumb:hover { transform: scale(1.04); box-shadow: var(--shadow-md); }
-  .mem-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.2s; }
-  .mem-thumb:hover img { transform: scale(1.06); }
-  .mem-placeholder {
-    width: 100%; height: 100%; display: flex; align-items: center;
-    justify-content: center; font-size: 2rem; color: var(--text-muted);
-  }
-  .mem-more {
-    flex: 0 0 auto; width: 135px; height: 135px; border-radius: 12px;
-    background: var(--surface-2); border: 1.5px dashed var(--border-2);
-    display: flex; align-items: center; justify-content: center;
-    font-size: 0.82rem; font-weight: 600; color: var(--text-muted);
-  }
 </style>
 
 <div class="page">
   <div class="header">
     <div class="header-left">
-      <h2>Photos</h2>
+      <h2>{isLivePhotoFilter ? '&#9654; Live Photos' : 'Photos'}</h2>
       {#if !loading && total > 0}<span class="count">{total.toLocaleString()} items</span>{/if}
+      {#if isLivePhotoFilter}<a href="/photos" style="font-size:0.82rem;color:var(--text-muted);margin-left:0.5rem">Clear filter ✕</a>{/if}
     </div>
     <div class="header-actions">
       <button class="select-btn" class:active={selectMode} on:click={toggleSelectMode}>
@@ -362,46 +301,6 @@
     </div>
   {/if}
 
-  {#if !memoriesLoading && yearGroups.length > 0}
-    <div class="memories-section">
-      <!-- svelte-ignore a11y-click-events-have-key-events -->
-      <!-- svelte-ignore a11y-no-static-element-interactions -->
-      <div class="memories-header" on:click={() => memoriesExpanded = !memoriesExpanded}>
-        <span class="memories-title">Memories</span>
-        <span class="mem-badge">✦ Today</span>
-        <span class="memories-subtitle">On this day in past years</span>
-        <span class="memories-toggle">{memoriesExpanded ? '▲ Hide' : '▼ Show'}</span>
-      </div>
-      {#if memoriesExpanded}
-        {#each yearGroups as group}
-          <div class="memory-group">
-            <div class="memory-year-label">
-              {group.label}
-              <span class="memory-year-sub">{group.year} · {group.count} photo{group.count !== 1 ? 's' : ''}</span>
-            </div>
-            <div class="memory-strip">
-              {#each group.assets as asset, i}
-                <!-- svelte-ignore a11y-click-events-have-key-events -->
-                <div class="mem-thumb" on:click={() => openMemory(group, i)}
-                  role="button" tabindex="0"
-                  on:keydown={(e) => e.key === 'Enter' && openMemory(group, i)}>
-                  {#if asset.thumbnailSmallPath}
-                    <img src={api.assets.thumbnailUrl(asset.id)} alt={asset.fileName} loading="lazy" />
-                  {:else}
-                    <div class="mem-placeholder">🖼</div>
-                  {/if}
-                </div>
-              {/each}
-              {#if group.count > group.assets.length}
-                <div class="mem-more">+{group.count - group.assets.length} more</div>
-              {/if}
-            </div>
-          </div>
-        {/each}
-      {/if}
-    </div>
-  {/if}
-
   {#if loading}
     <div class="loading">Loading your photos...</div>
   {:else if error}
@@ -419,7 +318,7 @@
           on:click={() => onTileClick(asset, i)} role="button" tabindex="0"
           on:keydown={(e) => e.key === 'Enter' && onTileClick(asset, i)}>
           {#if asset.type !== 'OTHER'}
-            <img src={api.assets.thumbnailUrl(asset.id)} alt={asset.fileName} loading="lazy"
+            <img src={api.assets.thumbnailUrl(asset.id, asset.updatedAt)} alt={asset.fileName} loading="lazy"
               on:error={(e) => imgError(e)} />
             <div class="broken" style="display:none">&#128247;</div>
           {:else}
@@ -431,6 +330,7 @@
             </div>
           {/if}
           {#if asset.type === 'VIDEO'}<span class="video-badge">VIDEO</span>{/if}
+          {#if asset.isLivePhoto && asset.livePhotoVideoPath}<span class="live-badge-grid">&#9654; LIVE</span>{/if}
           {#if $settings.photoGrid.showStorageIndicator}
           <div class="overlay">
             <div class="overlay-info">
@@ -460,8 +360,3 @@
   on:assetRemoved={handleAssetRemoved}
 />
 
-<PhotoViewer
-  bind:viewerIndex={memViewerIndex}
-  assets={memViewerAssets}
-  mode="default"
-/>

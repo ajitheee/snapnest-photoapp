@@ -8,6 +8,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgl1 \
     libglib2.0-0 \
     libgomp1 \
+    libheif-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Install CPU-only torch first (smaller), then the rest
@@ -25,4 +26,6 @@ ENV INSIGHTFACE_HOME=/model-cache/insightface
 
 EXPOSE 3003
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "3003"]
+ENV TOKENIZERS_PARALLELISM=false
+
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "3003", "--timeout-keep-alive", "120"]

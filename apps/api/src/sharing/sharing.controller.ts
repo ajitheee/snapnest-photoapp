@@ -4,7 +4,9 @@ import {
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { SharingService } from './sharing.service';
+import { SharingSuggestionsService } from './sharing-suggestions.service';
 import { CreateShareLinkDto } from './dto/create-share-link.dto';
+import { StorageService } from '../storage/storage.service';
 import { User } from '@prisma/client';
 import { Response } from 'express';
 import * as fs from 'fs';
@@ -33,7 +35,10 @@ function serializePublicLink(link: any) {
 @Controller('sharing')
 @UseGuards(JwtAuthGuard)
 export class SharingController {
-  constructor(private readonly sharingService: SharingService) {}
+  constructor(
+    private readonly sharingService: SharingService,
+    private readonly suggestionsService: SharingSuggestionsService,
+  ) {}
 
   @Post()
   create(@Body() dto: CreateShareLinkDto, @Request() req: { user: User }) {
@@ -43,6 +48,11 @@ export class SharingController {
   @Get()
   findAll(@Request() req: { user: User }) {
     return this.sharingService.findAll(req.user.id);
+  }
+
+  @Get('suggestions/people')
+  getSuggestions(@Request() req: { user: User }) {
+    return this.suggestionsService.getSuggestions(req.user.id);
   }
 
   @Get(':id')
@@ -59,7 +69,10 @@ export class SharingController {
 
 @Controller('s')
 export class PublicShareController {
-  constructor(private readonly sharingService: SharingService) {}
+  constructor(
+    private readonly sharingService: SharingService,
+    private readonly storage: StorageService,
+  ) {}
 
   @Get(':token')
   async resolve(
@@ -78,10 +91,15 @@ export class PublicShareController {
     @Res() res: Response,
   ) {
     const { filePath, mimeType } = await this.sharingService.getPublicFile(token, assetId, size);
-    if (!fs.existsSync(filePath)) throw new NotFoundException('File not found');
     res.setHeader('Content-Type', mimeType);
     res.setHeader('Cache-Control', 'public, max-age=86400');
-    fs.createReadStream(filePath).pipe(res);
+    if (this.storage.isS3Key(filePath)) {
+      const stream = await this.storage.getStream(filePath);
+      stream.pipe(res);
+    } else {
+      if (!fs.existsSync(filePath)) throw new NotFoundException('File not found');
+      fs.createReadStream(filePath).pipe(res);
+    }
   }
 
   @Get(':token/photo/:assetId')
@@ -91,9 +109,14 @@ export class PublicShareController {
     @Res() res: Response,
   ) {
     const { filePath, mimeType } = await this.sharingService.getPublicFile(token, assetId, 'original');
-    if (!fs.existsSync(filePath)) throw new NotFoundException('File not found');
     res.setHeader('Content-Type', mimeType);
     res.setHeader('Cache-Control', 'public, max-age=3600');
-    fs.createReadStream(filePath).pipe(res);
+    if (this.storage.isS3Key(filePath)) {
+      const stream = await this.storage.getStream(filePath);
+      stream.pipe(res);
+    } else {
+      if (!fs.existsSync(filePath)) throw new NotFoundException('File not found');
+      fs.createReadStream(filePath).pipe(res);
+    }
   }
 }

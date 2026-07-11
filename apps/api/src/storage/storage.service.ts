@@ -7,6 +7,7 @@ import {
   DeleteObjectsCommand,
   CreateBucketCommand,
   HeadBucketCommand,
+  HeadObjectCommand,
 } from '@aws-sdk/client-s3';
 import * as fs from 'fs';
 import { Readable } from 'stream';
@@ -94,6 +95,27 @@ export class StorageService implements OnModuleInit {
       Key: key,
     }));
     return res.Body as Readable;
+  }
+
+  async getObjectSize(key: string): Promise<number> {
+    const res = await this.client.send(new HeadObjectCommand({
+      Bucket: S3_BUCKET,
+      Key: key,
+    }));
+    return res.ContentLength ?? 0;
+  }
+
+  async getStreamRange(key: string, range: string): Promise<{ stream: Readable; contentLength: number; contentRange: string }> {
+    const res = await this.client.send(new GetObjectCommand({
+      Bucket: S3_BUCKET,
+      Key: key,
+      Range: range,
+    }));
+    return {
+      stream: res.Body as Readable,
+      contentLength: res.ContentLength ?? 0,
+      contentRange: res.ContentRange ?? '',
+    };
   }
 
   async deleteObject(key: string): Promise<void> {

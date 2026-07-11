@@ -11,6 +11,15 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     headers: { ...getAuthHeaders(), ...(options.headers || {}) },
   });
 
+  if (response.status === 401 && !path.startsWith('/auth/')) {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.removeItem('photoapp_token');
+      localStorage.removeItem('photoapp_user');
+    }
+    if (typeof window !== 'undefined') window.location.href = '/';
+    throw new Error('Session expired — please log in again');
+  }
+
   if (!response.ok) {
     const error = await response.json().catch(() => ({ message: response.statusText }));
     throw new Error(error.message || `Request failed: ${response.status}`);
@@ -49,6 +58,10 @@ export interface Asset {
   locationLng: number | null;
   locationCity: string | null;
   locationCountry: string | null;
+  editedPath: string | null;
+  editParams: Record<string, unknown> | null;
+  isLivePhoto: boolean;
+  livePhotoVideoPath: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -99,7 +112,8 @@ export interface SmartAlbumGroup {
   locations: SmartAlbumItem[];
   months: SmartAlbumItem[];
   tags: SmartAlbumItem[];
-  videos: SmartAlbumItem[];
+  videos: Asset[];
+  livePhotos: Asset[];
 }
 
 export interface SmartAlbumItem {
@@ -146,8 +160,10 @@ export const api = {
   },
 
   assets: {
-    async list(page = 1, limit = 50): Promise<PaginatedAssets> {
-      return request<PaginatedAssets>(`/assets?page=${page}&limit=${limit}`);
+    async list(page = 1, limit = 50, isLivePhoto?: boolean): Promise<PaginatedAssets> {
+      const qs = new URLSearchParams({ page: String(page), limit: String(limit) });
+      if (isLivePhoto) qs.set('isLivePhoto', 'true');
+      return request<PaginatedAssets>(`/assets?${qs}`);
     },
     async get(id: string): Promise<Asset> {
       return request<Asset>(`/assets/${id}`);
@@ -187,15 +203,115 @@ export const api = {
     async explore(): Promise<{ months: any[]; locations: any[]; tags: any[]; total: number }> {
       return request('/assets/explore');
     },
-    thumbnailUrl(id: string): string {
+    async syncStatus(): Promise<SyncStatus> {
+      return request<SyncStatus>('/assets/sync-status');
+    },
+    thumbnailUrl(id: string, updatedAt?: string): string {
       const token = typeof localStorage !== 'undefined' ? localStorage.getItem('photoapp_token') : null;
-      const qs = token ? `?token=${encodeURIComponent(token)}` : '';
+      let qs = token ? `?token=${encodeURIComponent(token)}` : '';
+      if (updatedAt) {
+        const v = new Date(updatedAt).getTime();
+        qs += qs ? `&_v=${v}` : `?_v=${v}`;
+      }
       return `${API_BASE}/assets/${id}/thumbnail${qs}`;
     },
     downloadUrl(id: string): string {
       const token = typeof localStorage !== 'undefined' ? localStorage.getItem('photoapp_token') : null;
       const qs = token ? `?token=${encodeURIComponent(token)}` : '';
       return `${API_BASE}/assets/${id}/download${qs}`;
+    },
+    editedUrl(id: string): string {
+      const token = typeof localStorage !== 'undefined' ? localStorage.getItem('photoapp_token') : null;
+      const qs = token ? `?token=${encodeURIComponent(token)}` : '';
+      return `${API_BASE}/assets/${id}/edited${qs}`;
+    },
+    liveVideoUrl(id: string): string {
+      const token = typeof localStorage !== 'undefined' ? localStorage.getItem('photoapp_token') : null;
+      const qs = token ? `?token=${encodeURIComponent(token)}` : '';
+      return `${API_BASE}/assets/${id}/live-video${qs}`;
+    },
+    async editPreview(id: string, params: Record<string, unknown>): Promise<string> {
+      const token = typeof localStorage !== 'undefined' ? localStorage.getItem('photoapp_token') : null;
+      const response = await fetch(`${API_BASE}/assets/${id}/edit/preview`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify(params),
+      });
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({ message: response.statusText }));
+        throw new Error(err.message || 'Edit preview failed');
+      }
+      const blob = await response.blob();
+      return URL.createObjectURL(blob);
+    },
+    async editSave(id: string, params: Record<string, unknown>): Promise<Asset> {
+      return request<Asset>(`/assets/${id}/edit/save`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(params),
+      });
+    },
+    async revertEdit(id: string): Promise<Asset> {
+      return request<Asset>(`/assets/${id}/edit`, { method: 'DELETE' });
+    },
+    async batchEdit(assetIds: string[], edits: Record<string, unknown>): Promise<{ processed: number }> {
+      return request<{ processed: number }>('/assets/batch-edit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ assetIds, edits }),
+      });
+    },
+    async removeRedEye(id: string): Promise<{ url: string }> {
+      return request<{ url: string }>(`/assets/${id}/red-eye`, { method: 'POST' });
+    },
+    async applyMarkup(id: string, annotations: unknown[]): Promise<{ url: string }> {
+      return request<{ url: string }>(`/assets/${id}/markup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ annotations }),
+      });
+    },
+    async applyDepthBlur(id: string, opts?: { blurStrength?: number; focusPoint?: { x: number; y: number } }): Promise<{ url: string }> {
+      return request<{ url: string }>(`/assets/${id}/depth-blur`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(opts || {}),
+      });
+    },
+    async applyLiveEffect(id: string, effect: 'loop' | 'bounce' | 'long_exposure'): Promise<{ url: string }> {
+      return request<{ url: string }>(`/assets/${id}/live-effect`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ effect }),
+      });
+    },
+    async removeLiveEffect(id: string): Promise<void> {
+      return request<void>(`/assets/${id}/live-effect`, { method: 'DELETE' });
+    },
+    async setKeyPhoto(id: string, timestampMs: number): Promise<{ thumbnailUrl: string }> {
+      return request<{ thumbnailUrl: string }>(`/assets/${id}/key-photo`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ timestampMs }),
+      });
+    },
+    async attachLiveVideo(id: string, file: File): Promise<Asset> {
+      const token = typeof localStorage !== 'undefined' ? localStorage.getItem('photoapp_token') : null;
+      const formData = new FormData();
+      formData.append('file', file, file.name);
+      const response = await fetch(`${API_BASE}/assets/${id}/live-video`, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: formData,
+      });
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({ message: response.statusText }));
+        throw new Error(err.message || 'Attach live video failed');
+      }
+      return response.json();
     },
     async downloadZip(assetIds: string[]): Promise<void> {
       const token = typeof localStorage !== 'undefined' ? localStorage.getItem('photoapp_token') : null;
@@ -283,6 +399,22 @@ export const api = {
       a.click();
       URL.revokeObjectURL(url);
     },
+    async getShares(id: string): Promise<{ sharedWithEmail: string; createdAt: string }[]> {
+      return request(`/albums/${id}/shares`);
+    },
+    async shareWithEmail(id: string, email: string): Promise<{ albumId: string; email: string; shared: boolean }> {
+      return request(`/albums/${id}/share`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+    },
+    async unshareWithEmail(id: string, email: string): Promise<void> {
+      return request(`/albums/${id}/share/${encodeURIComponent(email)}`, { method: 'DELETE' });
+    },
+    async sharedWithMe(): Promise<Album[]> {
+      return request('/albums/shared-with-me');
+    },
   },
 
   sharing: {
@@ -312,10 +444,12 @@ export const api = {
   },
 
   search: {
-    async search(query: string, mode: 'text' | 'semantic' | 'auto' = 'auto', month = '', location = '', page = 1, limit = 50): Promise<SearchResult> {
+    async search(query: string, mode: 'text' | 'semantic' | 'auto' | 'memory' = 'auto', month = '', location = '', page = 1, limit = 50, dateFrom = '', dateTo = ''): Promise<SearchResult> {
       const params: Record<string, string> = { q: query, mode, page: String(page), limit: String(limit) };
       if (month) params.month = month;
       if (location) params.location = location;
+      if (dateFrom) params.date_from = dateFrom;
+      if (dateTo) params.date_to = dateTo;
       const qs = new URLSearchParams(params);
       return request<SearchResult>(`/search?${qs}`);
     },
@@ -359,9 +493,35 @@ export const api = {
     },
   },
 
+  albumExplore: {
+    async get(): Promise<AlbumExploreData> {
+      return request<AlbumExploreData>('/albums/explore');
+    },
+  },
+
   memories: {
     async get(): Promise<MemoriesResponse> {
       return request<MemoriesResponse>('/memories');
+    },
+  },
+
+  recaps: {
+    async list(): Promise<Recap[]> {
+      return request<Recap[]>('/recaps');
+    },
+    async get(id: string): Promise<Recap> {
+      return request<Recap>(`/recaps/${id}`);
+    },
+    async generate(): Promise<Recap | { message: string }> {
+      return request<Recap | { message: string }>('/recaps/generate', { method: 'POST' });
+    },
+    videoUrl(id: string): string {
+      const token = typeof localStorage !== 'undefined' ? localStorage.getItem('photoapp_token') : null;
+      return `/api/recaps/${id}/video${token ? `?token=${encodeURIComponent(token)}` : ''}`;
+    },
+    coverUrl(id: string): string {
+      const token = typeof localStorage !== 'undefined' ? localStorage.getItem('photoapp_token') : null;
+      return `/api/recaps/${id}/cover${token ? `?token=${encodeURIComponent(token)}` : ''}`;
     },
   },
 
@@ -385,6 +545,13 @@ export const api = {
     async getUsers(page = 1, limit = 50): Promise<AdminUsersResult> {
       return request<AdminUsersResult>(`/admin/users?page=${page}&limit=${limit}`);
     },
+    async createUser(dto: { email: string; password: string; name: string; isAdmin: boolean }): Promise<AdminUser> {
+      return request<AdminUser>('/admin/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(dto),
+      });
+    },
     async updateUser(id: string, patch: { name?: string; isAdmin?: boolean; storageLimitBytes?: string | null }): Promise<AdminUser> {
       return request<AdminUser>(`/admin/users/${id}`, {
         method: 'PATCH',
@@ -392,8 +559,20 @@ export const api = {
         body: JSON.stringify(patch),
       });
     },
+    async resetPassword(id: string, password: string): Promise<void> {
+      return request<void>(`/admin/users/${id}/password`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password }),
+      });
+    },
     async deleteUser(id: string): Promise<void> {
       return request<void>(`/admin/users/${id}`, { method: 'DELETE' });
+    },
+  },
+  server: {
+    async info(): Promise<{ version: string; storage_used_bytes: number; storage_total_bytes: number; appUrl: string }> {
+      return request('/server/info');
     },
   },
 };
@@ -419,7 +598,7 @@ export interface UserPreferences {
 }
 
 export const DEFAULT_PREFERENCES: UserPreferences = {
-  assetViewer: { loadPreviewImage: true, loadOriginalImage: false },
+  assetViewer: { loadPreviewImage: true, loadOriginalImage: true },
   videos: { autoPlay: true, looping: false },
   theme: { automatic: false, primaryColor: null, colorfulInterface: false },
   photoGrid: { showStorageIndicator: true, assetsPerRow: 4 },
@@ -483,4 +662,73 @@ export interface MemoriesResponse {
   randomPhoto: MemoryAsset | null;
   recentHighlights: MemoryAsset[];
   meta: { totalPhotos: number; generatedAt: string };
+}
+
+export interface SyncStatusItem {
+  done: number;
+  total: number;
+}
+
+export interface SyncStatus {
+  totalAssets: number;
+  videoCount: number;
+  thumbnails: SyncStatusItem;
+  metadata: SyncStatusItem;
+  clipEmbeddings: SyncStatusItem;
+  faceDetection: SyncStatusItem;
+  sceneTags: SyncStatusItem;
+  geocoding: SyncStatusItem;
+  transcoding: SyncStatusItem;
+  allDone: boolean;
+}
+
+export interface Recap {
+  id: string;
+  ownerId: string;
+  weekStart: string;
+  weekEnd: string;
+  videoPath: string | null;
+  coverPath: string | null;
+  assetIds: string[];
+  photoCount: number;
+  locationSummary: string | null;
+  peopleSummary: string | null;
+  status: 'PENDING' | 'GENERATING' | 'READY' | 'FAILED';
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MediaTypeCount {
+  count: number;
+  coverAssetId: string | null;
+}
+
+export interface RecentDay {
+  date: string;
+  count: number;
+  coverAssetId: string;
+}
+
+export interface AlbumExploreData {
+  myAlbums: Album[];
+  sharedAlbums: Album[];
+  people: SmartAlbumItem[];
+  places: SmartAlbumItem[];
+  months: SmartAlbumItem[];
+  tags: SmartAlbumItem[];
+  recentDays: RecentDay[];
+  featured: Asset[];
+  mediaTypes: {
+    videos: MediaTypeCount;
+    livePhotos: MediaTypeCount;
+    selfies: MediaTypeCount;
+    screenshots: MediaTypeCount;
+    panoramas: MediaTypeCount;
+  };
+  utilities: {
+    archived: number;
+    trashed: number;
+    favorites: number;
+    total: number;
+  };
 }

@@ -31,6 +31,7 @@ import { Response, Request as ExpressRequest } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AssetsService } from './assets.service';
 import { EditService } from './edit.service';
+import { LivePhotoEffectsService, LiveEffect } from './live-photo-effects.service';
 import { StorageService } from '../storage/storage.service';
 import { UploadAssetDto } from './dto/upload-asset.dto';
 import { CheckHashesDto } from './dto/check-hashes.dto';
@@ -67,10 +68,11 @@ export class AssetsController {
     private readonly assetsService: AssetsService,
     private readonly storage: StorageService,
     private readonly editService: EditService,
+    private readonly livePhotoEffects: LivePhotoEffectsService,
   ) {}
 
   @Post('upload')
-  @UseInterceptors(FileInterceptor('file', { storage: uploadStorage, limits: { fileSize: 500 * 1024 * 1024 } }))
+  @UseInterceptors(FileInterceptor('file', { storage: uploadStorage, limits: { fileSize: 2 * 1024 * 1024 * 1024 } }))
   async upload(
     @UploadedFile() file: Express.Multer.File,
     @Body() dto: UploadAssetDto,
@@ -119,6 +121,11 @@ export class AssetsController {
   @Get('explore')
   async explore(@Request() req: { user: User }) {
     return this.assetsService.getExploreSummary(req.user.id);
+  }
+
+  @Get('sync-status')
+  async syncStatus(@Request() req: { user: User }) {
+    return this.assetsService.getSyncStatus(req.user.id);
   }
 
   @Post('reprocess-thumbnails')
@@ -177,6 +184,17 @@ export class AssetsController {
 
 
   /**
+   * GET /assets/device-ids
+   * Returns a map of deviceAssetId -> serverId for all non-deleted assets.
+   * Used by the mobile app to reconcile its local DB after a reinstall or
+   * DB loss, without re-uploading every file.
+   */
+  @Get('device-ids')
+  async deviceIds(@Request() req: { user: User }) {
+    return this.assetsService.getDeviceAssetIds(req.user.id);
+  }
+
+  /**
    * GET /assets/live-photos-missing-video
    * Returns deviceAssetId list of live photos that have no companion video yet.
    * Mobile app uses this to backfill live photo videos from the device library.
@@ -185,6 +203,19 @@ export class AssetsController {
   async livePhotosMissingVideo(@Request() req: { user: User }) {
     const assets = await this.assetsService.findLivePhotosMissingVideo(req.user.id);
     return { assets };
+  }
+
+  @Post('remove-duplicates')
+  async removeDuplicates(@Request() req: { user: User }) {
+    return this.assetsService.removeDuplicatesByDeviceId(req.user.id);
+  }
+
+  @Post('batch-metadata')
+  async batchUpdateMetadata(
+    @Body() body: { assetIds: string[]; fileCreatedAt?: string; locationLat?: number; locationLng?: number },
+    @Request() req: { user: User },
+  ) {
+    return this.assetsService.batchUpdateMetadata(req.user.id, body);
   }
 
   @Get()
@@ -227,6 +258,26 @@ export class AssetsController {
   @Patch(':id/archive')
   async toggleArchive(@Param('id') id: string, @Request() req: { user: User }) {
     const asset = await this.assetsService.toggleArchive(id, req.user.id);
+    return serializeAsset(asset);
+  }
+
+  @Patch(':id/caption')
+  async updateCaption(
+    @Param('id') id: string,
+    @Body('caption') caption: string,
+    @Request() req: { user: User },
+  ) {
+    const asset = await this.assetsService.updateCaption(id, req.user.id, caption);
+    return serializeAsset(asset);
+  }
+
+  @Patch(':id/metadata')
+  async updateMetadata(
+    @Param('id') id: string,
+    @Body() body: { fileCreatedAt?: string; locationLat?: number; locationLng?: number },
+    @Request() req: { user: User },
+  ) {
+    const asset = await this.assetsService.updateMetadata(id, req.user.id, body);
     return serializeAsset(asset);
   }
 
@@ -580,5 +631,102 @@ export class AssetsController {
   ) {
     console.warn('[LivePhoto] extraction error for asset ' + id + ': ' + body.code + ' — ' + body.message);
     return { received: true };
+  }
+
+  // ── Batch Edit (Phase 4) ─────────────────────────────────────────────────
+  @Post('batch-edit')
+  @HttpCode(HttpStatus.OK)
+  async batchEdit(
+    @Body() body: { assetIds: string[]; edits: EditAssetDto },
+    @Request() req: { user: User },
+  ) {
+    if (!body.assetIds || body.assetIds.length === 0) {
+      throw new BadRequestException('assetIds must not be empty');
+    }
+    if (body.assetIds.length > 100) {
+      throw new BadRequestException('Maximum 100 assets per batch');
+    }
+    return this.editService.batchEdit(
+      req.user.id,
+      body.assetIds,
+      body.edits,
+    );
+  }
+
+  // ── Live Photo Effects (Phase 4) ────────────────────────────────────────
+  @Post(':id/live-effect')
+  @HttpCode(HttpStatus.OK)
+  async applyLiveEffect(
+    @Param('id') id: string,
+    @Body() body: { effect: LiveEffect },
+    @Request() req: { user: User },
+  ) {
+    const validEffects: LiveEffect[] = ['loop', 'bounce', 'long_exposure'];
+    if (!validEffects.includes(body.effect)) {
+      throw new BadRequestException('effect must be one of: loop, bounce, long_exposure');
+    }
+    return this.livePhotoEffects.applyLiveEffect(req.user.id, id, body.effect);
+  }
+
+  @Delete(':id/live-effect')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async removeLiveEffect(
+    @Param('id') id: string,
+    @Request() req: { user: User },
+  ) {
+    await this.livePhotoEffects.removeLiveEffect(req.user.id, id);
+  }
+
+  @Post(':id/key-photo')
+  @HttpCode(HttpStatus.OK)
+  async setKeyPhoto(
+    @Param('id') id: string,
+    @Body() body: { timestampMs: number },
+    @Request() req: { user: User },
+  ) {
+    if (typeof body.timestampMs !== 'number' || body.timestampMs < 0) {
+      throw new BadRequestException('timestampMs must be a non-negative number');
+    }
+    return this.livePhotoEffects.setKeyPhoto(req.user.id, id, body.timestampMs);
+  }
+
+  // ── Red-eye removal (Phase 4) ───────────────────────────────────────────
+  @Post(':id/red-eye')
+  @HttpCode(HttpStatus.OK)
+  async removeRedEye(
+    @Param('id') id: string,
+    @Request() req: { user: User },
+  ) {
+    return this.editService.applyRedEye(req.user.id, id);
+  }
+
+  // ── Markup / Annotations (Phase 4) ──────────────────────────────────────
+  @Post(':id/markup')
+  @HttpCode(HttpStatus.OK)
+  async applyMarkup(
+    @Param('id') id: string,
+    @Body() body: { annotations: any[] },
+    @Request() req: { user: User },
+  ) {
+    if (!body.annotations || !Array.isArray(body.annotations)) {
+      throw new BadRequestException('annotations must be an array');
+    }
+    return this.editService.applyMarkup(req.user.id, id, body.annotations);
+  }
+
+  // ── Depth Blur / Portrait Mode (Phase 4) ────────────────────────────────
+  @Post(':id/depth-blur')
+  @HttpCode(HttpStatus.OK)
+  async applyDepthBlur(
+    @Param('id') id: string,
+    @Body() body: { blurStrength?: number; focusPoint?: { x: number; y: number } },
+    @Request() req: { user: User },
+  ) {
+    return this.editService.applyDepthBlur(
+      req.user.id,
+      id,
+      body.blurStrength,
+      body.focusPoint,
+    );
   }
 }

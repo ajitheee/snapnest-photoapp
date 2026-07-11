@@ -10,43 +10,59 @@
   $: query = $pageStore.url.searchParams.get('q') ?? '';
   $: month = $pageStore.url.searchParams.get('month') ?? '';
   $: location = $pageStore.url.searchParams.get('location') ?? '';
+  $: dateFrom = $pageStore.url.searchParams.get('date_from') ?? '';
+  $: dateTo = $pageStore.url.searchParams.get('date_to') ?? '';
+  $: urlMode = $pageStore.url.searchParams.get('mode') as typeof searchMode | null;
+
+  $: if (urlMode && ['auto', 'text', 'semantic', 'memory'].includes(urlMode)) {
+    searchMode = urlMode;
+  }
 
   let assets: Asset[] = [];
   let loading = false;
   let error = '';
   let resultMode = '';
   let total = 0;
-  let searchMode: 'auto' | 'text' | 'semantic' = 'auto';
+  let page = 1;
+  const limit = 50;
+  $: totalPages = Math.ceil(total / limit);
+  let searchMode: 'auto' | 'text' | 'semantic' | 'memory' = 'auto';
   let currentKey = '';
   let viewerIndex = -1;
+  let memoryContext = '';
 
   onMount(async () => {
     if (!$isAuthenticated) { goto('/'); return; }
-    if (query || month || location) await doSearch(query, month, location);
+    if (query || month || location || dateFrom || dateTo) await doSearch(query, month, location);
   });
 
   $: {
-    const key = query + '|' + month + '|' + location;
-    if ((query || month || location) && key !== currentKey) {
+    const key = query + '|' + month + '|' + location + '|' + dateFrom + '|' + dateTo;
+    if ((query || month || location || dateFrom || dateTo) && key !== currentKey) {
       currentKey = key;
+      page = 1;
       doSearch(query, month, location);
     }
   }
 
   async function doSearch(q: string, m: string, loc: string) {
-    if (!q.trim() && !m && !loc) return;
-    loading = true; error = ''; viewerIndex = -1;
+    if (!q.trim() && !m && !loc && !dateFrom && !dateTo) return;
+    loading = true; error = ''; viewerIndex = -1; memoryContext = '';
     try {
-      const r = await api.search.search(q, searchMode, m, loc);
+      const r = await api.search.search(q, searchMode, m, loc, page, limit, dateFrom, dateTo);
       assets = r.assets; total = r.total; resultMode = r.mode;
+      memoryContext = (r as any).context ?? '';
     } catch (e) { error = e instanceof Error ? e.message : 'Search failed'; }
     finally { loading = false; }
   }
 
   async function changeMode(mode: typeof searchMode) {
     searchMode = mode;
-    if (query || month || location) await doSearch(query, month, location);
+    if (query || month || location || dateFrom || dateTo) await doSearch(query, month, location);
   }
+
+  async function prevPage() { if (page > 1) { page--; await doSearch(query, month, location); } }
+  async function nextPage() { if (page < totalPages) { page++; await doSearch(query, month, location); } }
 
   function handleAssetUpdated(e: CustomEvent<Asset>) {
     assets = assets.map(a => a.id === e.detail.id ? e.detail : a);
@@ -95,13 +111,26 @@
   .meta { color: #ccc; }
   .broken { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 2rem; color: var(--border-2); }
   .similarity { position: absolute; top: 0.4rem; right: 0.4rem; background: rgba(37,99,235,0.85); border-radius: 4px; padding: 2px 5px; font-size: 0.7rem; color: #fff; font-weight: 600; }
+  .memory-btn { background: linear-gradient(135deg, #8b5cf6, #ec4899) !important; color: #fff !important; border-color: #8b5cf6 !important; }
+  .memory-btn:not(.active) { opacity: 0.7; }
+  .memory-btn.active { opacity: 1; box-shadow: 0 0 12px rgba(139,92,246,0.4); }
+  .memory-context { padding: 0.6rem 0.9rem; margin-bottom: 1rem; background: var(--surface-2, #f3f4f6); border: 1px solid var(--border, #e5e7eb); border-radius: 8px; font-size: 0.8rem; color: var(--text-muted, #6b7280); line-height: 1.5; }
+  .memory-examples { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.75rem; justify-content: center; }
+  .example-btn { padding: 0.4rem 0.8rem; background: var(--surface-2, #f3f4f6); border: 1px solid var(--border, #e5e7eb); border-radius: 20px; font-size: 0.8rem; color: var(--text-muted, #6b7280); cursor: pointer; transition: all 0.15s; }
+  .example-btn:hover { background: var(--accent, #6366f1); color: #fff; border-color: var(--accent, #6366f1); }
+  .pagination { display: flex; align-items: center; justify-content: center; gap: 0.75rem; margin-top: 2rem; padding-bottom: 1rem; }
+  .page-btn { padding: 0.5rem 1.1rem; background: var(--surface); border: 1.5px solid var(--border); border-radius: 10px; color: var(--text-muted); font-size: 0.875rem; font-weight: 500; transition: all 0.15s; font-family: inherit; cursor: pointer; }
+  .page-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+  .page-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+  .page-info { color: var(--text-muted); font-size: 0.875rem; font-weight: 500; background: var(--surface-2); border: 1px solid var(--border); padding: 0.4rem 0.9rem; border-radius: 8px; }
 </style>
 
 <div class="page">
   <div class="header">
-    <h2>Search{month ? `: ${month}` : location ? `: ${location}` : query ? `: "${query}"` : ''}</h2>
+    <h2>Search{month ? `: ${month}` : location ? `: ${location}` : dateFrom ? `: ${new Date(dateFrom + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}` : query ? `: "${query}"` : ''}</h2>
     <div class="toolbar">
       <div class="mode-toggle">
+        <button class="mode-btn memory-btn" class:active={searchMode === 'memory'} on:click={() => changeMode('memory')}>Memory</button>
         <button class="mode-btn" class:active={searchMode === 'auto'}     on:click={() => changeMode('auto')}>Auto</button>
         <button class="mode-btn" class:active={searchMode === 'text'}     on:click={() => changeMode('text')}>Text</button>
         <button class="mode-btn" class:active={searchMode === 'semantic'} on:click={() => changeMode('semantic')}>Semantic</button>
@@ -112,8 +141,23 @@
     </div>
   </div>
 
-  {#if !query && !month && !location}
-    <div class="placeholder">Enter a search term in the search bar above.</div>
+  {#if memoryContext && !loading}
+    <div class="memory-context">{memoryContext}</div>
+  {/if}
+
+  {#if !query && !month && !location && !dateFrom && !dateTo}
+    <div class="placeholder">
+      {#if searchMode === 'memory'}
+        Ask a question about your photos. Try:
+        <div class="memory-examples">
+          <button class="example-btn" on:click={() => { const params = new URLSearchParams({ q: 'photos of me at the beach last summer' }); window.location.href = `/search?${params}`; }}>photos at the beach last summer</button>
+          <button class="example-btn" on:click={() => { const params = new URLSearchParams({ q: 'sunset photos from last month' }); window.location.href = `/search?${params}`; }}>sunset photos from last month</button>
+          <button class="example-btn" on:click={() => { const params = new URLSearchParams({ q: 'pictures with food last week' }); window.location.href = `/search?${params}`; }}>pictures with food last week</button>
+        </div>
+      {:else}
+        Enter a search term in the search bar above.
+      {/if}
+    </div>
   {:else if loading}
     <div class="loading">Searching{searchMode === 'semantic' ? ' (semantic search may take a moment)' : ''}...</div>
   {:else if error}
@@ -132,7 +176,7 @@
         <div class="tile" on:click={() => viewerIndex = i} role="button" tabindex="0"
           on:keydown={(e) => e.key === 'Enter' && (viewerIndex = i)}>
           {#if asset.type !== 'OTHER'}
-            <img src={api.assets.thumbnailUrl(asset.id)} alt={asset.fileName} loading="lazy"
+            <img src={api.assets.thumbnailUrl(asset.id, asset.updatedAt)} alt={asset.fileName} loading="lazy"
               on:error={(e) => imgError(e)} />
             <div class="broken" style="display:none">&#128247;</div>
           {:else}
@@ -150,6 +194,13 @@
         </div>
       {/each}
     </div>
+    {#if totalPages > 1}
+      <div class="pagination">
+        <button class="page-btn" on:click={prevPage} disabled={page <= 1}>&larr; Previous</button>
+        <span class="page-info">Page {page} of {totalPages}</span>
+        <button class="page-btn" on:click={nextPage} disabled={page >= totalPages}>Next &rarr;</button>
+      </div>
+    {/if}
   {/if}
 </div>
 

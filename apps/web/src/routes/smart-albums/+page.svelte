@@ -6,16 +6,17 @@
   import type { MemoryYearGroup, MemoryAsset } from '$lib/api';
   import PhotoViewer from '$lib/PhotoViewer.svelte';
 
-  let data: { people: any[]; locations: any[]; months: any[]; tags: any[]; videos: any[] } | null = null;
+  let data: { people: any[]; locations: any[]; months: any[]; tags: any[]; videos: any[]; livePhotos: any[] } | null = null;
   let loading = true;
   let error = '';
 
   let yearGroups: MemoryYearGroup[] = [];
   let memoriesLoading = true;
 
-  // PhotoViewer state for memories
+  // Single PhotoViewer for memories, videos, and live photos
   let viewerAssets: any[] = [];
   let viewerIndex = -1;
+  let activeGroup: MemoryYearGroup | null = null;
 
   onMount(async () => {
     if (!$isAuthenticated) { goto('/'); return; }
@@ -23,15 +24,12 @@
       api.smartAlbums.list(),
       api.memories.get(),
     ]);
-    if (smartResult.status === 'fulfilled') data = smartResult.value;
+    if (smartResult.status === 'fulfilled') data = smartResult.value as any;
     else error = smartResult.reason?.message ?? 'Failed to load';
     if (memoriesResult.status === 'fulfilled') yearGroups = memoriesResult.value.yearGroups;
     loading = false;
     memoriesLoading = false;
   });
-
-  // Track which group is open so we can remove assets from it
-  let activeGroup: MemoryYearGroup | null = null;
 
   function openMemoryViewer(group: MemoryYearGroup, index: number) {
     activeGroup = group;
@@ -39,39 +37,46 @@
     viewerIndex = index;
   }
 
-  function handleMemoryAssetRemoved(e: CustomEvent<string>) {
+  function openInViewer(assets: any[], index: number) {
+    activeGroup = null;
+    viewerAssets = [...assets];
+    viewerIndex = index;
+  }
+
+  function handleAssetUpdated(e: CustomEvent<any>) {
+    const updated = e.detail;
+    viewerAssets = viewerAssets.map(a => a.id === updated.id ? updated : a);
+    if (data) {
+      data = {
+        ...data,
+        videos: data.videos.map((a: any) => a.id === updated.id ? updated : a),
+        livePhotos: data.livePhotos.map((a: any) => a.id === updated.id ? updated : a),
+      };
+    }
+  }
+
+  function handleAssetRemoved(e: CustomEvent<string>) {
     const removedId = e.detail;
-    // Remove from the active viewer list
     viewerAssets = viewerAssets.filter(a => a.id !== removedId);
-    // Remove from the year group strip
     if (activeGroup) {
       activeGroup.assets = activeGroup.assets.filter(a => a.id !== removedId);
       activeGroup.count = Math.max(0, activeGroup.count - 1);
       yearGroups = yearGroups.map(g => g === activeGroup ? { ...activeGroup } : g).filter(g => g.count > 0);
     }
-    // Refresh smart album covers in case a cover photo was deleted
-    api.smartAlbums.list().then(d => { data = d; }).catch(() => {});
+    if (data) {
+      data = {
+        ...data,
+        videos: data.videos.filter((a: any) => a.id !== removedId),
+        livePhotos: data.livePhotos.filter((a: any) => a.id !== removedId),
+      };
+    }
+    api.smartAlbums.list().then(d => { data = d as any; }).catch(() => {});
   }
 
-  function openPerson(album: any) {
-    goto(`/people/${album.criteria.personId}`);
-  }
-
-  function openLocation(album: any) {
-    goto(`/search?location=${encodeURIComponent(album.name)}`);
-  }
-
-  function openMonth(album: any) {
-    goto(`/search?month=${encodeURIComponent(album.criteria.month)}`);
-  }
-
-  function openTag(album: any) {
-    goto(`/search?q=${encodeURIComponent(album.name)}`);
-  }
-
-  function openVideo(album: any) {
-    goto(`/videos?month=${encodeURIComponent(album.criteria.month)}`);
-  }
+  function openPerson(album: any) { goto(`/people/${album.criteria.personId}`); }
+  function openLocation(album: any) { goto(`/search?location=${encodeURIComponent(album.name)}`); }
+  function openMonth(album: any) { goto(`/search?month=${encodeURIComponent(album.criteria.month)}`); }
+  function openTag(album: any) { goto(`/search?q=${encodeURIComponent(album.name)}`); }
 </script>
 
 <style>
@@ -86,6 +91,7 @@
   .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
   .card { border-radius: 10px; overflow: hidden; background: var(--surface); border: 1px solid var(--border); cursor: pointer; }
   .card:hover .card-img { transform: scale(1.05); }
+  .card-summary { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
   .thumb { aspect-ratio: 1; overflow: hidden; background: var(--surface-2); }
   .card-img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.2s; }
   .placeholder { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 2.5rem; }
@@ -99,46 +105,47 @@
   .video-overlay { position: absolute; bottom: 4px; right: 4px; background: rgba(0,0,0,0.7); border-radius: 4px; padding: 2px 5px; font-size: 0.65rem; color: #fff; }
   .thumb-wrap { position: relative; aspect-ratio: 1; overflow: hidden; background: var(--surface-2); }
 
-  /* ── Memories ── */
-  .memory-group { margin-bottom: 1.75rem; }
-  .memory-label { font-size: 1rem; font-weight: 700; margin-bottom: 0.5rem; color: var(--text); }
-  .memory-sub { font-size: 0.8rem; color: var(--text-muted); margin-left: 0.5rem; font-weight: 400; }
+  /* ── Memories — horizontal card strip ── */
   .memory-strip {
-    display: flex;
-    gap: 6px;
-    overflow-x: auto;
-    padding-bottom: 4px;
-    scrollbar-width: thin;
-    scrollbar-color: var(--border) transparent;
+    display: flex; gap: 10px; overflow-x: auto; padding-bottom: 4px;
+    scrollbar-width: thin; scrollbar-color: var(--border) transparent;
+    align-items: flex-start;
   }
   .memory-strip::-webkit-scrollbar { height: 4px; }
   .memory-strip::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
-  .memory-thumb {
-    flex: 0 0 auto;
-    width: 140px;
-    height: 140px;
-    border-radius: 8px;
-    overflow: hidden;
-    background: var(--surface-2);
-    cursor: pointer;
-    position: relative;
+
+  .mem-card {
+    flex: 0 0 auto; width: 160px; height: 210px;
+    border-radius: 14px; overflow: hidden;
+    background: var(--surface-2); cursor: pointer; position: relative;
+    transition: transform 0.2s, box-shadow 0.2s;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.18);
   }
-  .memory-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.2s; }
-  .memory-thumb:hover img { transform: scale(1.05); }
-  .memory-thumb .mem-placeholder { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 2rem; color: var(--text-muted); }
-  .memory-more {
-    flex: 0 0 auto;
-    width: 140px;
-    height: 140px;
-    border-radius: 8px;
-    background: var(--surface-2);
-    border: 1px solid var(--border);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 0.85rem;
-    color: var(--text-muted);
-    cursor: default;
+  .mem-card:hover { transform: scale(1.03); box-shadow: 0 6px 20px rgba(0,0,0,0.28); }
+  .mem-card img {
+    width: 100%; height: 100%; object-fit: cover; display: block;
+    transition: transform 0.25s;
+  }
+  .mem-card:hover img { transform: scale(1.06); }
+  .mem-card-overlay {
+    position: absolute; inset: 0;
+    background: linear-gradient(to top, rgba(0,0,0,0.75) 0%, rgba(0,0,0,0.35) 45%, transparent 100%);
+    display: flex; flex-direction: column; justify-content: flex-end;
+    padding: 0.7rem 0.75rem;
+  }
+  .mem-card-label {
+    font-size: 0.95rem; font-weight: 800; color: #fff;
+    line-height: 1.2; letter-spacing: -0.01em;
+    text-shadow: 0 1px 4px rgba(0,0,0,0.5);
+  }
+  .mem-card-sub {
+    font-size: 0.72rem; color: rgba(255,255,255,0.75);
+    margin-top: 0.2rem; font-weight: 500;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.5);
+  }
+  .mem-placeholder {
+    width: 100%; height: 100%; display: flex; align-items: center;
+    justify-content: center; font-size: 2.5rem; color: var(--text-muted);
   }
 </style>
 
@@ -151,30 +158,24 @@
         <span class="section-title">🕰 Memories</span>
         <span class="section-count">On this day in past years</span>
       </div>
-      {#each yearGroups as group}
-        <div class="memory-group">
-          <div class="memory-label">
-            {group.label}
-            <span class="memory-sub">{group.year} · {group.count} photo{group.count !== 1 ? 's' : ''}</span>
-          </div>
-          <div class="memory-strip">
-            {#each group.assets as asset, i}
-              <div class="memory-thumb" on:click={() => openMemoryViewer(group, i)}
-                role="button" tabindex="0"
-                on:keydown={(e) => e.key === 'Enter' && openMemoryViewer(group, i)}>
-                {#if asset.thumbnailSmallPath}
-                  <img src={api.assets.thumbnailUrl(asset.id)} alt={asset.fileName} loading="lazy" />
-                {:else}
-                  <div class="mem-placeholder">🖼</div>
-                {/if}
-              </div>
-            {/each}
-            {#if group.count > group.assets.length}
-              <div class="memory-more">+{group.count - group.assets.length} more</div>
+      <div class="memory-strip">
+        {#each yearGroups as group}
+          <!-- svelte-ignore a11y-click-events-have-key-events -->
+          <div class="mem-card" on:click={() => openMemoryViewer(group, 0)}
+            role="button" tabindex="0"
+            on:keydown={(e) => e.key === 'Enter' && openMemoryViewer(group, 0)}>
+            {#if group.assets[0]?.thumbnailSmallPath}
+              <img src={api.assets.thumbnailUrl(group.assets[0].id)} alt={group.label} loading="lazy" />
+            {:else}
+              <div class="mem-placeholder">🖼</div>
             {/if}
+            <div class="mem-card-overlay">
+              <div class="mem-card-label">{group.label}</div>
+              <div class="mem-card-sub">{group.year} &middot; {group.count} photo{group.count !== 1 ? 's' : ''}</div>
+            </div>
           </div>
-        </div>
-      {/each}
+        {/each}
+      </div>
     </section>
   {/if}
 
@@ -188,23 +189,50 @@
       <section>
         <div class="section-header">
           <span class="section-title">🎬 Videos</span>
-          <span class="section-count">{data.videos.reduce((s, v) => s + v.assetCount, 0)} videos · {data.videos.length} period{data.videos.length !== 1 ? 's' : ''}</span>
+          <span class="section-count">{data.videos.length} video{data.videos.length !== 1 ? 's' : ''}</span>
         </div>
         <div class="cards">
-          {#each data.videos as album}
-            <div class="card" on:click={() => openVideo(album)} role="button" tabindex="0"
-              on:keydown={(e) => e.key === 'Enter' && openVideo(album)}>
+          {#each data.videos as asset, i}
+            <!-- svelte-ignore a11y-no-static-element-interactions -->
+            <div class="card" on:click={() => openInViewer(data.videos, i)} role="button" tabindex="0"
+              on:keydown={(e) => e.key === 'Enter' && openInViewer(data.videos, i)}>
               <div class="thumb-wrap">
-                {#if album.coverAssetId}
-                  <img class="card-img" src={api.assets.thumbnailUrl(album.coverAssetId)} alt={album.name} />
+                {#if asset.id}
+                  <img class="card-img" src={api.assets.thumbnailUrl(asset.id, asset.updatedAt)} alt={asset.fileName}
+                    on:error={(e) => { e.currentTarget.style.display='none'; }} />
                 {:else}
                   <div class="placeholder">🎬</div>
                 {/if}
-                <span class="video-overlay">VIDEO</span>
+                <span class="video-overlay">▶</span>
               </div>
               <div class="card-info">
-                <div class="card-name">{album.name}</div>
-                <div class="card-count">{album.assetCount} video{album.assetCount !== 1 ? 's' : ''}</div>
+                <div class="card-name">{asset.fileName}</div>
+                <div class="card-count">{asset.duration ? asset.duration + 's' : ''}</div>
+              </div>
+            </div>
+          {/each}
+        </div>
+      </section>
+    {/if}
+
+    {#if data.livePhotos && data.livePhotos.length > 0}
+      <section>
+        <div class="section-header">
+          <span class="section-title">&#9654; Live Photos</span>
+          <span class="section-count">{data.livePhotos.length} photo{data.livePhotos.length !== 1 ? 's' : ''}</span>
+        </div>
+        <div class="cards">
+          {#each data.livePhotos as asset, i}
+            <!-- svelte-ignore a11y-no-static-element-interactions -->
+            <div class="card" on:click={() => openInViewer(data.livePhotos, i)} role="button" tabindex="0"
+              on:keydown={(e) => e.key === 'Enter' && openInViewer(data.livePhotos, i)}>
+              <div class="thumb">
+                <img class="card-img" src={api.assets.thumbnailUrl(asset.id, asset.updatedAt)} alt={asset.fileName}
+                  on:error={(e) => { e.currentTarget.style.display='none'; }} />
+              </div>
+              <div class="card-info">
+                <div class="card-name">{asset.fileName}</div>
+                <div class="card-count" style="color:#22c55e">&#9654; Live</div>
               </div>
             </div>
           {/each}
@@ -314,5 +342,6 @@
   bind:viewerIndex
   assets={viewerAssets}
   mode="default"
-  on:assetRemoved={handleMemoryAssetRemoved}
+  on:assetUpdated={handleAssetUpdated}
+  on:assetRemoved={handleAssetRemoved}
 />

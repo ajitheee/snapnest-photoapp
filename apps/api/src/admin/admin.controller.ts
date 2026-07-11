@@ -1,6 +1,6 @@
 import {
   Controller, Get, Patch, Delete, Post, Param, Body, Query,
-  UseGuards, DefaultValuePipe, ParseIntPipe, HttpCode, HttpStatus,
+  UseGuards, DefaultValuePipe, ParseIntPipe, HttpCode, HttpStatus, HttpException,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AdminGuard } from './admin.guard';
@@ -10,6 +10,22 @@ import { AdminService } from './admin.service';
 @UseGuards(JwtAuthGuard, AdminGuard)
 export class AdminController {
   constructor(private readonly adminService: AdminService) {}
+
+  @Post('users')
+  createUser(
+    @Body() dto: { email: string; password: string; name: string; isAdmin?: boolean },
+  ) {
+    return this.adminService.createUser(dto);
+  }
+
+  @Patch('users/:id/password')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async resetPassword(
+    @Param('id') id: string,
+    @Body() body: { password: string },
+  ) {
+    return this.adminService.resetUserPassword(id, body.password);
+  }
 
   @Get('users')
   getUsers(
@@ -42,4 +58,10 @@ export class AdminController {
   requeueFaceDetection() {
     return this.adminService.requeueMissingFaceDetection();
   }
+
+  @Post('backfill-live-photos')
+  async backfillLivePhotos() {
+    return this.adminService.backfillLivePhotoMetadata();
+  }
+
 }

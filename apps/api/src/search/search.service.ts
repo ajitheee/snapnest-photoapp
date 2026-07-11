@@ -16,10 +16,17 @@ export class SearchService {
     limit = 50,
     month?: string,
     location?: string,
+    dateFrom?: string,
+    dateTo?: string,
   ) {
     // Month-based date filter (YYYY-MM format) — bypass text/semantic search
     if (month && /^\d{4}-\d{2}$/.test(month)) {
       return this.monthSearch(ownerId, month, page, limit);
+    }
+
+    // Explicit date-range filter from the mobile date picker — bypass text/semantic
+    if (dateFrom || dateTo) {
+      return this.dateRangeSearch(ownerId, page, limit, dateFrom, dateTo);
     }
 
     // Location filter from explore cards (e.g. "Santa Clarita, US") — bypass text/semantic
@@ -43,6 +50,39 @@ export class SearchService {
     return this.textSearch(ownerId, query, page, limit);
   }
 
+  private async dateRangeSearch(
+    ownerId: string,
+    page: number,
+    limit: number,
+    dateFrom?: string,
+    dateTo?: string,
+  ) {
+    const skip = (page - 1) * limit;
+    const where: any = { ownerId, isDeleted: false, isArchived: false };
+    if (dateFrom || dateTo) {
+      where.fileCreatedAt = {};
+      if (dateFrom) where.fileCreatedAt.gte = new Date(dateFrom);
+      if (dateTo) {
+        const end = new Date(dateTo);
+        end.setUTCHours(23, 59, 59, 999);
+        where.fileCreatedAt.lte = end;
+      }
+    }
+
+    const [assets, total] = await this.prisma.$transaction([
+      this.prisma.asset.findMany({ where, orderBy: { fileCreatedAt: 'desc' }, skip, take: limit }),
+      this.prisma.asset.count({ where }),
+    ]);
+
+    return {
+      mode: 'date_range',
+      assets: assets.map((a) => ({ ...a, fileSizeBytes: a.fileSizeBytes.toString() })),
+      total,
+      page,
+      limit,
+    };
+  }
+
   private async monthSearch(ownerId: string, month: string, page: number, limit: number) {
     const [year, mon] = month.split('-').map(Number);
     const start = new Date(year, mon - 1, 1);
@@ -52,6 +92,7 @@ export class SearchService {
     const where = {
       ownerId,
       isDeleted: false,
+      isArchived: false,
       fileCreatedAt: { gte: start, lt: end },
     };
 
@@ -118,7 +159,21 @@ export class SearchService {
       { locationState: { contains: q, mode: 'insensitive' as const } },
       { locationCountry: { contains: q, mode: 'insensitive' as const } },
       { tags: { some: { tag: { contains: q, mode: 'insensitive' as const } } } },
+      { caption: { contains: q, mode: 'insensitive' as const } },
+      { ocrText: { contains: q, mode: 'insensitive' as const } },
     ];
+
+    // Split multi-word queries so each word is matched against tags independently
+    const words = q.split(/\s+/).filter(w => w.length >= 3);
+    if (words.length > 1) {
+      for (const word of words) {
+        orClauses.push(
+          { tags: { some: { tag: { contains: word, mode: 'insensitive' as const } } } },
+          { fileName: { contains: word, mode: 'insensitive' as const } },
+          { locationCity: { contains: word, mode: 'insensitive' as const } },
+        );
+      }
+    }
 
     // For "City, Country" style queries (from explore location cards), also try
     // matching each comma-separated part against the individual location fields.
@@ -171,6 +226,8 @@ export class SearchService {
     }
 
     const vec = `[${embedding.join(',')}]`;
+    const MIN_SIMILARITY = 0.18;
+    const fetchLimit = limit * 2;
 
     const rows: any[] = await this.prisma.$queryRaw`
       SELECT
@@ -184,13 +241,17 @@ export class SearchService {
         AND "isDeleted" = false
         AND "clipEmbedding" IS NOT NULL
       ORDER BY "clipEmbedding" <=> ${vec}::vector
-      LIMIT ${limit}
+      LIMIT ${fetchLimit}
     `;
+
+    const filtered = rows
+      .filter((r) => r.similarity >= MIN_SIMILARITY)
+      .slice(0, limit);
 
     return {
       mode: 'semantic',
-      assets: rows,
-      total: rows.length,
+      assets: filtered,
+      total: filtered.length,
       page: 1,
       limit,
     };

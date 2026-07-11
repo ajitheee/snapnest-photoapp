@@ -29,8 +29,13 @@ export class AuthController {
   @Get('me')
   @UseGuards(JwtAuthGuard)
   async me(@Request() req: { user: User }) {
-    const { passwordHash: _, ...user } = req.user as any;
-    return user;
+    const { passwordHash: _, storageUsedBytes, storageLimitBytes, ...rest } = req.user as any;
+    return {
+      ...rest,
+      // Serialize BigInt fields as strings so JSON.stringify doesn't throw
+      storageUsedBytes: storageUsedBytes?.toString() ?? '0',
+      storageLimitBytes: storageLimitBytes?.toString() ?? null,
+    };
   }
 
 }
