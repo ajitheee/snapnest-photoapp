@@ -198,6 +198,22 @@ class ApiService {
     await _dio.delete(_url('/devices/$token'));
   }
 
+  // ── Asset actions ──────────────────────────────────────────────────────────
+
+  Future<Asset> toggleFavorite(String id) async {
+    final res = await _dio.patch(_url('/assets/$id/favorite'));
+    return Asset.fromJson(res.data as Map<String, dynamic>);
+  }
+
+  Future<Asset> toggleArchive(String id) async {
+    final res = await _dio.patch(_url('/assets/$id/archive'));
+    return Asset.fromJson(res.data as Map<String, dynamic>);
+  }
+
+  Future<void> softDelete(String id) async {
+    await _dio.delete(_url('/assets/$id'));
+  }
+
   // ── Memories ──────────────────────────────────────────────────────────────
 
   Future<Map<String, dynamic>> getMemories() async {

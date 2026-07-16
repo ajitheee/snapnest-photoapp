@@ -162,16 +162,26 @@ class _LibraryScreenState extends State<LibraryScreen> {
     return PhotoGrid(
       assets: _assets,
       api: widget.api,
-      onTap: (asset) => Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => AssetViewerScreen(
-            asset: asset,
-            api: widget.api,
-            allAssets: _assets,
+      onTap: (asset) async {
+        final result = await Navigator.push<AssetViewerResult>(
+          context,
+          MaterialPageRoute(
+            builder: (_) => AssetViewerScreen(
+              asset: asset,
+              api: widget.api,
+              allAssets: _assets,
+            ),
           ),
-        ),
-      ),
+        );
+        if (result != null && mounted) {
+          setState(() {
+            _assets = result.assets
+                .where((a) => !result.deletedIds.contains(a.id))
+                .toList();
+            _total -= result.deletedIds.length;
+          });
+        }
+      },
     );
   }
 }

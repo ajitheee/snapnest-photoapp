@@ -1,8 +1,16 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:share_plus/share_plus.dart';
 import '../models/asset.dart';
 import '../services/api_service.dart';
 import '../services/cache_service.dart';
+
+class AssetViewerResult {
+  final List<Asset> assets;
+  final Set<String> deletedIds;
+
+  const AssetViewerResult({required this.assets, required this.deletedIds});
+}
 
 class AssetViewerScreen extends StatefulWidget {
   final Asset asset;
@@ -24,7 +32,10 @@ class _AssetViewerScreenState extends State<AssetViewerScreen>
     with SingleTickerProviderStateMixin {
   late final PageController _pageController;
   late int _currentIndex;
+  late List<Asset> _assets;
+  final Set<String> _deletedIds = {};
   bool _showOverlay = true;
+  bool _actionInProgress = false;
 
   // Pinch-to-minimize state
   double _dismissScale = 1.0;
@@ -47,7 +58,8 @@ class _AssetViewerScreenState extends State<AssetViewerScreen>
   @override
   void initState() {
     super.initState();
-    _currentIndex = widget.allAssets.indexWhere((a) => a.id == widget.asset.id);
+    _assets = List.of(widget.allAssets);
+    _currentIndex = _assets.indexWhere((a) => a.id == widget.asset.id);
     if (_currentIndex == -1) _currentIndex = 0;
     _pageController = PageController(initialPage: _currentIndex);
 
@@ -67,7 +79,104 @@ class _AssetViewerScreenState extends State<AssetViewerScreen>
     super.dispose();
   }
 
-  Asset get _current => widget.allAssets[_currentIndex];
+  Asset get _current => _assets[_currentIndex];
+
+  void _pop() {
+    Navigator.pop(
+      context,
+      AssetViewerResult(assets: _assets, deletedIds: _deletedIds),
+    );
+  }
+
+  Future<void> _toggleFavorite() async {
+    if (_actionInProgress) return;
+    setState(() => _actionInProgress = true);
+    try {
+      final updated = await widget.api.toggleFavorite(_current.id);
+      setState(() {
+        _assets[_currentIndex] = updated;
+      });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _actionInProgress = false);
+    }
+  }
+
+  Future<void> _toggleArchive() async {
+    if (_actionInProgress) return;
+    setState(() => _actionInProgress = true);
+    try {
+      final updated = await widget.api.toggleArchive(_current.id);
+      setState(() {
+        _assets[_currentIndex] = updated;
+      });
+      if (mounted && updated.isArchived) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Moved to archive')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _actionInProgress = false);
+    }
+  }
+
+  Future<void> _deleteAsset() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete Photo'),
+        content: const Text('This photo will be moved to Recently Deleted.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+
+    setState(() => _actionInProgress = true);
+    try {
+      await widget.api.softDelete(_current.id);
+      _deletedIds.add(_current.id);
+      setState(() {
+        _assets.removeAt(_currentIndex);
+        if (_assets.isEmpty) {
+          _pop();
+          return;
+        }
+        if (_currentIndex >= _assets.length) {
+          _currentIndex = _assets.length - 1;
+        }
+      });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _actionInProgress = false);
+    }
+  }
+
+  Future<void> _shareAsset() async {
+    final url = widget.api.thumbnailUrl(_current.id, size: 'large');
+    await Share.share('${_current.fileName}\n$url');
+  }
 
   void _onScaleStart(ScaleStartDetails details) {
     if (details.pointerCount >= 2) {
@@ -138,7 +247,7 @@ class _AssetViewerScreenState extends State<AssetViewerScreen>
     _dismissAnimController.addListener(_onAnimTick);
     _dismissAnimController.forward().then((_) {
       _dismissAnimController.removeListener(_onAnimTick);
-      if (mounted) Navigator.pop(context);
+      if (mounted) _pop();
     });
   }
 
@@ -180,13 +289,13 @@ class _AssetViewerScreenState extends State<AssetViewerScreen>
                   ..scale(_dismissScale),
                 child: PageView.builder(
                   controller: _pageController,
-                  itemCount: widget.allAssets.length,
+                  itemCount: _assets.length,
                   physics: _isPinchDismissing || _dismissScale < 1.0
                       ? const NeverScrollableScrollPhysics()
                       : null,
                   onPageChanged: (i) => setState(() => _currentIndex = i),
                   itemBuilder: (context, index) {
-                    final asset = widget.allAssets[index];
+                    final asset = _assets[index];
                     return CachedNetworkImage(
                       imageUrl: widget.api.thumbnailUrl(asset.id, size: 'large'),
                       cacheManager: PreviewCacheManager(),
@@ -221,7 +330,7 @@ class _AssetViewerScreenState extends State<AssetViewerScreen>
                         children: [
                           IconButton(
                             icon: const Icon(Icons.arrow_back, color: Colors.white),
-                            onPressed: () => Navigator.pop(context),
+                            onPressed: _pop,
                           ),
                           const Spacer(),
                           if (_current.isLivePhoto)
@@ -247,7 +356,7 @@ class _AssetViewerScreenState extends State<AssetViewerScreen>
                   ),
                 ),
 
-              // Bottom metadata overlay
+              // Bottom metadata + action bar overlay
               if (_dismissScale == 1.0 && !animating)
                 AnimatedOpacity(
                   opacity: _showOverlay ? 1.0 : 0.0,
@@ -260,38 +369,95 @@ class _AssetViewerScreenState extends State<AssetViewerScreen>
                           begin: Alignment.bottomCenter,
                           end: Alignment.topCenter,
                           colors: [Colors.black87, Colors.transparent],
-                          stops: [0.0, 0.4],
+                          stops: [0.0, 0.5],
                         ),
                       ),
-                      padding: const EdgeInsets.fromLTRB(16, 40, 16, 32),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            _current.fileName,
-                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            _formatDate(_current.fileCreatedAt),
-                            style: const TextStyle(color: Colors.white70, fontSize: 13),
-                          ),
-                          if (_current.locationCity != null)
+                      padding: const EdgeInsets.fromLTRB(16, 40, 16, 16),
+                      child: SafeArea(
+                        top: false,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
                             Text(
-                              [_current.locationCity, _current.locationCountry]
-                                  .whereType<String>()
-                                  .join(', '),
+                              _current.fileName,
+                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              _formatDate(_current.fileCreatedAt),
                               style: const TextStyle(color: Colors.white70, fontSize: 13),
                             ),
-                        ],
+                            if (_current.locationCity != null)
+                              Text(
+                                [_current.locationCity, _current.locationCountry]
+                                    .whereType<String>()
+                                    .join(', '),
+                                style: const TextStyle(color: Colors.white70, fontSize: 13),
+                              ),
+                            const SizedBox(height: 16),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceAround,
+                              children: [
+                                _actionButton(
+                                  icon: _current.isFavorite
+                                      ? Icons.favorite
+                                      : Icons.favorite_border,
+                                  label: 'Favorite',
+                                  color: _current.isFavorite ? Colors.red : Colors.white,
+                                  onTap: _toggleFavorite,
+                                ),
+                                _actionButton(
+                                  icon: Icons.share_outlined,
+                                  label: 'Share',
+                                  onTap: _shareAsset,
+                                ),
+                                _actionButton(
+                                  icon: _current.isArchived
+                                      ? Icons.unarchive_outlined
+                                      : Icons.archive_outlined,
+                                  label: _current.isArchived ? 'Unarchive' : 'Archive',
+                                  onTap: _toggleArchive,
+                                ),
+                                _actionButton(
+                                  icon: Icons.delete_outline,
+                                  label: 'Delete',
+                                  color: Colors.white,
+                                  onTap: _deleteAsset,
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
                 ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _actionButton({
+    required IconData icon,
+    required String label,
+    Color color = Colors.white,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: _actionInProgress ? null : onTap,
+      child: Opacity(
+        opacity: _actionInProgress ? 0.5 : 1.0,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: color, size: 26),
+            const SizedBox(height: 4),
+            Text(label, style: TextStyle(color: color, fontSize: 11)),
+          ],
         ),
       ),
     );

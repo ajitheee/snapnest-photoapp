@@ -64,6 +64,28 @@ class Asset {
         createdAt: DateTime.parse(json['createdAt'] as String),
       );
 
+  Asset copyWith({bool? isFavorite, bool? isArchived}) => Asset(
+        id: id,
+        ownerId: ownerId,
+        deviceAssetId: deviceAssetId,
+        fileName: fileName,
+        mimeType: mimeType,
+        type: type,
+        fileCreatedAt: fileCreatedAt,
+        fileSizeBytes: fileSizeBytes,
+        isFavorite: isFavorite ?? this.isFavorite,
+        isArchived: isArchived ?? this.isArchived,
+        isLivePhoto: isLivePhoto,
+        locationLat: locationLat,
+        locationLng: locationLng,
+        locationCity: locationCity,
+        locationCountry: locationCountry,
+        width: width,
+        height: height,
+        duration: duration,
+        createdAt: createdAt,
+      );
+
   String get thumbnailUrl => '/api/assets/$id/thumbnail?size=small';
   String get previewUrl => '/api/assets/$id/thumbnail?size=large';
   bool get isVideo => type == AssetType.video;

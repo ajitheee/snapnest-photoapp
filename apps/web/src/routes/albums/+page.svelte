@@ -83,6 +83,15 @@
     viewerIndex = -1;
   }
 
+  function handleAssetUpdated(e: CustomEvent<Asset>) {
+    filterAssets = filterAssets.map(a => a.id === e.detail.id ? e.detail : a);
+  }
+
+  function handleAssetRemoved(e: CustomEvent<string>) {
+    filterAssets = filterAssets.filter(a => a.id !== e.detail);
+    filterTotal--;
+  }
+
   async function filterPrev() { if (filterPage > 1) { filterPage--; await loadFilterPage(); } }
   async function filterNext() { if (filterPage < filterTotalPages) { filterPage++; await loadFilterPage(); } }
 
@@ -395,6 +404,8 @@
       bind:viewerIndex
       assets={filterAssets}
       mode="default"
+      on:assetUpdated={handleAssetUpdated}
+      on:assetRemoved={handleAssetRemoved}
     />
 
   {:else}
