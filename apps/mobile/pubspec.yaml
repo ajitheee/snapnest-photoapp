@@ -1,6 +1,6 @@
-name: photoapp_mobile
-description: PhotoApp — self-hosted photo backup and management
-version: 1.0.0+1
+name: snapnest_mobile
+description: SnapNest — self-hosted photo backup and management
+version: 2.0.0+83
 
 environment:
   sdk: ">=3.2.0 <4.0.0"

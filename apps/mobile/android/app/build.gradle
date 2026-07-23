@@ -6,7 +6,7 @@ plugins {
 }
 
 android {
-    namespace "com.photoapp.mobile"
+    namespace "com.snapnest.snapnestMobile"
     compileSdk 34
     ndkVersion flutter.ndkVersion
 
@@ -20,7 +20,7 @@ android {
     }
 
     defaultConfig {
-        applicationId "com.photoapp.mobile"
+        applicationId "com.snapnest.snapnestMobile"
         minSdk 26           // Android 8 (Oreo) — required for WorkManager foreground service
         targetSdk 34
         versionCode flutter.versionCode

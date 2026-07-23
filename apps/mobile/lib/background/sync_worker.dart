@@ -10,7 +10,7 @@ import '../services/sync_service.dart';
 /// Android: WorkManager executes [syncCallbackDispatcher] in a separate isolate.
 /// iOS:     WorkManager wraps BGProcessingTask / BGAppRefreshTask and calls the
 ///          same dispatcher via method channel.
-const String _taskId = 'com.photoapp.sync.periodic';
+const String _taskId = 'com.snapnest.sync.periodic';
 
 // Required to be a top-level function for WorkManager
 @pragma('vm:entry-point')

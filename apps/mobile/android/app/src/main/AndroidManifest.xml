@@ -33,7 +33,7 @@
     <uses-permission android:name="android.permission.BATTERY_STATS" />
 
     <application
-        android:label="PhotoApp"
+        android:label="SnapNest"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:requestLegacyExternalStorage="false"

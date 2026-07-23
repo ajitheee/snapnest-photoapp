@@ -1,4 +1,4 @@
-package com.photoapp.mobile
+package com.snapnest.snapnestMobile
 
 import io.flutter.embedding.android.FlutterActivity
 

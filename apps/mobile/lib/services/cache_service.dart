@@ -8,7 +8,7 @@ import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 /// - TTL is 30 days; the manager auto-evicts LRU entries when the size cap
 ///   is approached.
 class ThumbnailCacheManager extends CacheManager with ImageCacheManager {
-  static const key = 'photoapp_thumbnails';
+  static const key = 'snapnest_thumbnails';
 
   static final ThumbnailCacheManager _instance = ThumbnailCacheManager._();
   factory ThumbnailCacheManager() => _instance;
@@ -29,7 +29,7 @@ class ThumbnailCacheManager extends CacheManager with ImageCacheManager {
 /// Full-resolution preview cache. Smaller cap (200 files) since previews are
 /// much larger; intended for the viewer screen.
 class PreviewCacheManager extends CacheManager with ImageCacheManager {
-  static const key = 'photoapp_previews';
+  static const key = 'snapnest_previews';
 
   static final PreviewCacheManager _instance = PreviewCacheManager._();
   factory PreviewCacheManager() => _instance;

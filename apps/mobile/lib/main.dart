@@ -22,17 +22,17 @@ void main() async {
   // Register background sync callback before runApp (required by WorkManager)
   await Workmanager().initialize(syncCallbackDispatcher, isInDebugMode: kDebugMode);
 
-  runApp(const PhotoApp());
+  runApp(const SnapNestApp());
 }
 
-class PhotoApp extends StatefulWidget {
-  const PhotoApp({super.key});
+class SnapNestApp extends StatefulWidget {
+  const SnapNestApp({super.key});
 
   @override
-  State<PhotoApp> createState() => _PhotoAppState();
+  State<SnapNestApp> createState() => _SnapNestAppState();
 }
 
-class _PhotoAppState extends State<PhotoApp> {
+class _SnapNestAppState extends State<SnapNestApp> {
   late final ApiService _api;
   late final AuthService _auth;
   late final SyncService _sync;
@@ -78,7 +78,7 @@ class _PhotoAppState extends State<PhotoApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'PhotoApp',
+      title: 'SnapNest',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(

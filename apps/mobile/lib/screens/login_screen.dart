@@ -75,7 +75,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     Icon(Icons.photo_library_outlined, size: 64, color: theme.colorScheme.primary),
                     const SizedBox(height: 16),
                     Text(
-                      'PhotoApp',
+                      'SnapNest',
                       textAlign: TextAlign.center,
                       style: theme.textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w600),
                     ),

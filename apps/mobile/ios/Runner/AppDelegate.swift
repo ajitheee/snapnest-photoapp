@@ -8,8 +8,8 @@ import FirebaseMessaging
 @objc class AppDelegate: FlutterAppDelegate {
 
     // Background task identifiers — must match Info.plist BGTaskSchedulerPermittedIdentifiers
-    static let syncTaskId        = "com.photoapp.mobile.sync"
-    static let widgetRefreshId   = "com.photoapp.mobile.widget-refresh"
+    static let syncTaskId        = "com.snapnest.snapnestMobile.sync"
+    static let widgetRefreshId   = "com.snapnest.snapnestMobile.widget-refresh"
 
     override func application(
         _ application: UIApplication,
@@ -155,8 +155,8 @@ final class WidgetDataFetcher {
     static let shared = WidgetDataFetcher()
     private init() {}
 
-    private let appGroupId = "group.com.photoapp.mobile"
-    private let userDefaults: UserDefaults? = UserDefaults(suiteName: "group.com.photoapp.mobile")
+    private let appGroupId = "group.com.snapnest.snapnestMobile"
+    private let userDefaults: UserDefaults? = UserDefaults(suiteName: "group.com.snapnest.snapnestMobile")
 
     func fetchAndSave(completion: @escaping (Bool) -> Void) {
         guard

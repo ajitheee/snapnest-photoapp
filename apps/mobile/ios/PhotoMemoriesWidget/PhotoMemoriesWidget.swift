@@ -2,7 +2,7 @@ import WidgetKit
 import SwiftUI
 
 // ── App Group identifier (shared with the main app target) ───────────────────
-private let appGroupId = "group.com.photoapp.mobile"
+private let appGroupId = "group.com.snapnest.snapnestMobile"
 
 // ── Timeline entry ───────────────────────────────────────────────────────────
 
@@ -90,7 +90,7 @@ struct PhotoMemoriesWidgetView: View {
                     Image(systemName: "photo.on.rectangle.angled")
                         .font(.system(size: 32, weight: .light))
                         .foregroundColor(.white.opacity(0.8))
-                    Text("PhotoApp")
+                    Text("SnapNest")
                         .font(.caption)
                         .foregroundColor(.white.opacity(0.7))
                 }

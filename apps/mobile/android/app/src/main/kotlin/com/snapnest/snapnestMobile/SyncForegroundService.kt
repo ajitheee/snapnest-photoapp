@@ -1,4 +1,4 @@
-package com.photoapp.mobile
+package com.snapnest.snapnestMobile
 
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -29,7 +29,7 @@ import androidx.core.app.NotificationCompat
 class SyncForegroundService : Service() {
 
     companion object {
-        const val CHANNEL_ID = "photoapp_sync"
+        const val CHANNEL_ID = "snapnest_sync"
         const val NOTIFICATION_ID = 1001
         const val EXTRA_DONE = "done"
         const val EXTRA_TOTAL = "total"

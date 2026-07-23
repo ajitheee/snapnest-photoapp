@@ -150,7 +150,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ListTile(
             leading: const Icon(Icons.widgets_outlined),
             title: const Text('Photo Memories widget'),
-            subtitle: const Text('Long-press your home screen → Widgets → PhotoApp'),
+            subtitle: const Text('Long-press your home screen → Widgets → SnapNest'),
             onTap: () {},
           ),
           const Divider(height: 1),

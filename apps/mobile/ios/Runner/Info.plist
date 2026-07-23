@@ -6,15 +6,15 @@
     <key>CFBundleDevelopmentRegion</key>
     <string>$(DEVELOPMENT_LANGUAGE)</string>
     <key>CFBundleDisplayName</key>
-    <string>PhotoApp</string>
+    <string>SnapNest</string>
     <key>CFBundleExecutable</key>
     <string>$(EXECUTABLE_NAME)</string>
     <key>CFBundleIdentifier</key>
-    <string>com.photoapp.mobile</string>
+    <string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>
-    <string>photoapp_mobile</string>
+    <string>SnapNest</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
@@ -33,21 +33,21 @@
     <!-- ── Background task identifiers ────────────────────────────────── -->
     <key>BGTaskSchedulerPermittedIdentifiers</key>
     <array>
-        <string>com.photoapp.mobile.sync</string>
-        <string>com.photoapp.mobile.widget-refresh</string>
+        <string>com.snapnest.snapnestMobile.sync</string>
+        <string>com.snapnest.snapnestMobile.widget-refresh</string>
     </array>
 
     <!-- ── Privacy descriptions ────────────────────────────────────────── -->
     <key>NSPhotoLibraryUsageDescription</key>
-    <string>PhotoApp needs access to your photo library to back up your photos and videos.</string>
+    <string>SnapNest needs access to your photo library to back up your photos and videos.</string>
     <key>NSPhotoLibraryAddUsageDescription</key>
-    <string>PhotoApp needs permission to save photos to your library.</string>
+    <string>SnapNest needs permission to save photos to your library.</string>
     <key>NSCameraUsageDescription</key>
-    <string>PhotoApp needs camera access to take photos directly from the app.</string>
+    <string>SnapNest needs camera access to take photos directly from the app.</string>
 
     <!-- ── App Group (shared with WidgetKit extension) ─────────────────── -->
     <!-- Configure in Xcode → Signing & Capabilities → App Groups -->
-    <!-- Group ID: group.com.photoapp.mobile -->
+    <!-- Group ID: group.com.snapnest.snapnestMobile -->
 
     <!-- ── Launch screen ───────────────────────────────────────────────── -->
     <key>UILaunchStoryboardName</key>

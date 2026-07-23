@@ -17,7 +17,7 @@ class LocalDbService {
   Future<Database> _open() async {
     final dir = await getDatabasesPath();
     return openDatabase(
-      join(dir, 'photoapp_sync.db'),
+      join(dir, 'snapnest_sync.db'),
       version: 1,
       onCreate: (db, _) async {
         await db.execute('''

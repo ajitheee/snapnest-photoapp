@@ -23,8 +23,8 @@ class NotificationService {
   bool _initialised = false;
 
   static const _androidChannel = AndroidNotificationChannel(
-    'photoapp_default',
-    'PhotoApp',
+    'snapnest_default',
+    'SnapNest',
     description: 'Backup status and shared album activity',
     importance: Importance.defaultImportance,
   );
