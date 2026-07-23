@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:photo_manager/photo_manager.dart';
+import '../models/asset.dart';
 import 'api_service.dart';
 import 'local_db_service.dart';
 
