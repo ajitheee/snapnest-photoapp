@@ -198,8 +198,9 @@ final class WidgetDataFetcher {
                     (randomPhoto["fileCreatedAt"] as? String) ?? "",
                     forKey: "widget_photo_date"
                 )
-                // Tell WidgetKit to reload all timelines
-                WidgetCenter.shared.reloadAllTimelines()
+                if #available(iOS 14.0, *) {
+                    WidgetCenter.shared.reloadAllTimelines()
+                }
                 completion(true)
             }
         }.resume()
