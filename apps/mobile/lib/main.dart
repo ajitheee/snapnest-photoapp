@@ -72,7 +72,7 @@ class _SnapNestAppState extends State<SnapNestApp> {
         networkType: NetworkType.unmetered, // Wi-Fi only
         requiresCharging: true,
       ),
-      existingWorkPolicy: ExistingWorkPolicy.keep,
+      existingWorkPolicy: ExistingPeriodicWorkPolicy.keep,
     );
   }
 
