@@ -2,7 +2,7 @@ import 'dart:io';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:photo_manager/photo_manager.dart';
-import '../models/asset.dart';
+import '../models/asset.dart' as models;
 import 'api_service.dart';
 import 'local_db_service.dart';
 
@@ -161,7 +161,7 @@ class SyncService extends ChangeNotifier {
       final fileSize = await file.length();
       final mimeType = _mimeType(entity);
 
-      Asset? uploadedAsset;
+      models.Asset? uploadedAsset;
 
       if (fileSize <= _chunkSize) {
         // Small file: single-shot upload
@@ -191,7 +191,7 @@ class SyncService extends ChangeNotifier {
     }
   }
 
-  Future<Asset?> _resumableUpload(
+  Future<models.Asset?> _resumableUpload(
     AssetEntity entity,
     File file,
     String checksum,
