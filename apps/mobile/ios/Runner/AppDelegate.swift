@@ -3,6 +3,7 @@ import UIKit
 import BackgroundTasks
 import FirebaseCore
 import FirebaseMessaging
+import WidgetKit
 
 @main
 @objc class AppDelegate: FlutterAppDelegate {
@@ -143,7 +144,11 @@ extension AppDelegate {
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
         // Show notification banner even when app is in foreground
-        completionHandler([.banner, .badge, .sound])
+        if #available(iOS 14.0, *) {
+            completionHandler([.banner, .badge, .sound])
+        } else {
+            completionHandler([.alert, .badge, .sound])
+        }
     }
 }
 
